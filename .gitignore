@@ -6,5 +6,4 @@ out/
 *.log
 .DS_Store
 _crm-test.json
-
 .vercel
