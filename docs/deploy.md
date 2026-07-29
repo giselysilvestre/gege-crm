@@ -17,7 +17,16 @@
 | `ANTHROPIC_API_KEY` | Resumo da Gê (opcional) |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` |
 
-5. Deploy → acesse **`/whatsapp`**
+5. Deploy → acesse **`/whatsapp`** (redireciona para login se não estiver autenticado)
+
+### Supabase Auth (login)
+
+No Supabase → **Authentication → URL Configuration**, inclua em **Redirect URLs**:
+
+- `https://gege-crm.vercel.app/auth/callback`
+- `http://localhost:3010/auth/callback`
+
+O CRM usa a **mesma conta** do gege.ia.br (email + senha Supabase).
 
 ### CLI
 

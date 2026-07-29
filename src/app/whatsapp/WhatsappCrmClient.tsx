@@ -57,6 +57,7 @@ import {
 
 import CrmSidebar from "@/components/crm/CrmSidebar";
 import { CandidatoCvResumoToggle } from "@/components/crm/CandidatoCvResumoToggle";
+import { CrmSessionUser } from "@/components/CrmSessionUser";
 import VisaoGeralDashboard from "@/components/crm/VisaoGeralDashboard";
 
 type ViewId = CrmViewId;
@@ -68,7 +69,6 @@ const VIEW_LABELS: Record<ViewId, string> = {
   alertas: "Alertas",
 };
 
-const CRM_USER = process.env.NEXT_PUBLIC_CRM_USER ?? "gsilvestre";
 
 function previewListaMsg(row: CrmCandidatoRow): string {
   if (row.ultima_mensagem?.trim()) {
@@ -205,12 +205,6 @@ function listaStatusClass(etapa: CrmCandidatoRow["etapa_funil"]) {
   return `lista-status-${etapa.replace(/_/g, "-")}`;
 }
 
-function crmUserInitials(username: string) {
-  const clean = username.replace(/[^a-zA-Z0-9]/g, " ").trim();
-  const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return clean.slice(0, 2).toUpperCase() || "U";
-}
 
 function IconPanelLeft() {
   return (
@@ -1523,12 +1517,7 @@ export default function WhatsappCrmClient({
             >
               {theme === "light" ? <IconSun /> : <IconMoon />}
             </button>
-            <div className="crm-topbar-user" aria-label="Usuário logado">
-              <span className="crm-topbar-avatar" aria-hidden="true">
-                {crmUserInitials(CRM_USER)}
-              </span>
-              <span className="crm-topbar-name">{CRM_USER}</span>
-            </div>
+            <CrmSessionUser />
           </div>
         </div>
 
