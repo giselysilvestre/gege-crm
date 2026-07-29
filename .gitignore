@@ -6,4 +6,5 @@ out/
 *.log
 .DS_Store
 _crm-test.json
+_gh-*.txt
 .vercel
