@@ -57,7 +57,6 @@ import {
 
 import CrmSidebar from "@/components/crm/CrmSidebar";
 import { CandidatoCvResumoToggle } from "@/components/crm/CandidatoCvResumoToggle";
-import { CrmSessionUser } from "@/components/CrmSessionUser";
 import VisaoGeralDashboard from "@/components/crm/VisaoGeralDashboard";
 
 type ViewId = CrmViewId;
@@ -1517,7 +1516,6 @@ export default function WhatsappCrmClient({
             >
               {theme === "light" ? <IconSun /> : <IconMoon />}
             </button>
-            <CrmSessionUser />
           </div>
         </div>
 

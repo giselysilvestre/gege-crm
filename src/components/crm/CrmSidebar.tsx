@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { CrmSessionUser } from "@/components/CrmSessionUser";
 import type { CrmViewId } from "@/lib/crm/types";
 
 type IconProps = { className?: string };
@@ -114,6 +115,10 @@ export default function CrmSidebar({
           );
         })}
       </nav>
+
+      <div className="crm-sidebar-footer">
+        <CrmSessionUser />
+      </div>
     </aside>
   );
 }
