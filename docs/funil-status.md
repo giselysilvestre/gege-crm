@@ -55,4 +55,10 @@ Mudar cortes com `reclassificar: true` (padrão) reaplica nas candidaturas eleg�
 
 ## Espelho na sessão
 
-`whatsapp_sessoes.etapa_funil` guarda só a **etapa-mãe** (compat). UI lê o detalhado de `candidaturas.status`.
+`whatsapp_sessoes.etapa_funil` guarda só a **etapa-mãe** (compat: `inscrito` | `abordado` | `qualificado` | `encaminhado` | `contratado`). UI lê o detalhado de `candidaturas.status`.
+
+## Regras de consistência
+
+1. **Uma candidatura ativa por candidato** — as demais ficam `arquivada=true`. Ao mover de vaga, a nova começa em `inscrito_aguardando_disparo` e as outras arquivam.
+2. **Status é da candidatura/vaga atual** — disparo ou conversa em outra vaga **não** muda o status desta. Inscrito que já foi abordado em vaga antiga continua Inscrito na nova até haver atividade **nesta** candidatura.
+3. **CRM só lista candidatura ativa** — sessões ligadas a arquivada são ignoradas na listagem.

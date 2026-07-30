@@ -59,30 +59,6 @@ export function proximaEtapaFunil(atual: EtapaFunil): EtapaFunil | null {
   return CANDIDATURA_ETAPAS[i + 1];
 }
 
-export function statusDot(
-  etapa: EtapaFunil,
-  precisaResp: boolean,
-  diasInativo: number,
-  statusDetalhado?: CandidaturaStatus | null
-): "green" | "amber" | "red" | "gray" {
-  const s = statusDetalhado ?? null;
-  if (
-    s === "inscrito_reprovado" ||
-    s === "inscrito_falha" ||
-    s === "abordado_reprovado_sem_resposta" ||
-    s === "abordado_negativa" ||
-    s === "qualificado_reprovado_entrevista" ||
-    s === "encaminhado_reprovado"
-  ) {
-    return "red";
-  }
-  if (etapa === "contratado" || etapa === "encaminhado") return "green";
-  if (precisaResp || s === "abordado_em_conversa" || s === "abordado_sem_resposta") return "amber";
-  if (diasInativo >= 3) return "red";
-  if (etapa === "inscrito") return "gray";
-  return "green";
-}
-
 export function isEtapaFunil(v: string): v is EtapaFunil {
   return (CANDIDATURA_ETAPAS as readonly string[]).includes(v);
 }

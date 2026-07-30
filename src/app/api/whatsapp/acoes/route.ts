@@ -16,6 +16,7 @@ import {
 } from "@/lib/crm/mensagens-acao";
 import { isEtapaFunil } from "@/lib/crm/mapEtapa";
 import { classificarCandidatura } from "@/lib/crm/classificarCandidatura";
+import { garantirUmaCandidaturaAtiva } from "@/lib/crm/umaCandidaturaAtiva";
 import type { CrmTemplateWhatsapp, EtapaFunil, MotivoReprovacao } from "@/lib/crm/types";
 import type { CandidaturaStatus } from "@/lib/candidatura-status";
 import {
@@ -29,6 +30,8 @@ import {
   normalizeCandidaturaStatus,
   reprovadoStatusForEtapa,
 } from "@/lib/candidatura-status";
+import { primeiroNomeFromAuthUser } from "@/lib/crm/contatoHumano";
+import { getAuthUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -498,17 +501,8 @@ async function executarMoverVaga(
     .eq("id", sessaoId);
   if (sessaoErr) throw sessaoErr;
 
-  if (candidaturaOrigemId !== candidaturaDestinoId) {
-    const { error: movidoErr } = await supabase
-      .from("candidaturas")
-      .update({
-        arquivada: true,
-        arquivada_em: new Date().toISOString(),
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq("id", candidaturaOrigemId);
-    if (movidoErr) throw movidoErr;
-  }
+  // Uma candidatura ativa por candidato: destino fica ativa; demais (incl. origem) arquivam.
+  await garantirUmaCandidaturaAtiva(supabase, candidatoId, candidaturaDestinoId);
 
   const tituloVaga = await loadVagaTituloPorId(supabase, vagaDestinoId);
   let avisoMensagem: string | undefined;
@@ -548,11 +542,68 @@ async function executarTemplate(
   );
 }
 
+async function executarEmContato(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  sessao: SessaoRow,
+  nomeHumano: string,
+  marcar: boolean
+) {
+  const candidaturaId = sessao.candidatura_id;
+  if (!candidaturaId) {
+    throw new Error("Sessão sem candidatura vinculada.");
+  }
+  const { error } = await supabase
+    .from("candidaturas")
+    .update({
+      contato_humano_por: marcar ? nomeHumano : null,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq("id", candidaturaId);
+  if (error) throw error;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const action = String(body.action ?? "");
     const supabase = getSupabaseAdmin();
+
+    if (action === "em_contato_lote") {
+      const user = await getAuthUser();
+      if (!user) {
+        return NextResponse.json({ error: "Faça login para continuar." }, { status: 401 });
+      }
+      const nomeHumano = primeiroNomeFromAuthUser(user);
+      const marcar = body.desmarcar !== true;
+      const sessaoIds = parseSessaoIds(body.sessaoIds);
+      if (sessaoIds.length === 0) {
+        return NextResponse.json({ error: "sessaoIds é obrigatório" }, { status: 400 });
+      }
+
+      const erros: { sessaoId: string; error: string }[] = [];
+      let processados = 0;
+      for (const sid of sessaoIds) {
+        try {
+          const sessao = await loadSessao(supabase, sid);
+          if (!sessao) {
+            erros.push({ sessaoId: sid, error: "Sessão não encontrada" });
+            continue;
+          }
+          await executarEmContato(supabase, sessao, nomeHumano, marcar);
+          processados += 1;
+        } catch (error) {
+          erros.push({ sessaoId: sid, error: mensagemErro(error) });
+        }
+      }
+
+      return NextResponse.json({
+        ok: erros.length === 0,
+        processados,
+        total: sessaoIds.length,
+        contato_humano_por: marcar ? nomeHumano : null,
+        erros,
+      });
+    }
 
     if (action === "reprovar_lote") {
       const motivo = String(body.motivo ?? "") as MotivoReprovacao;
@@ -850,6 +901,20 @@ export async function POST(request: Request) {
         .update({ reativacao_enviada: true, etapa_funil: "abordado" })
         .eq("id", sessaoId);
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === "em_contato") {
+      const user = await getAuthUser();
+      if (!user) {
+        return NextResponse.json({ error: "Faça login para continuar." }, { status: 401 });
+      }
+      const nomeHumano = primeiroNomeFromAuthUser(user);
+      const marcar = body.desmarcar !== true;
+      await executarEmContato(supabase, sessao, nomeHumano, marcar);
+      return NextResponse.json({
+        ok: true,
+        contato_humano_por: marcar ? nomeHumano : null,
+      });
     }
 
     if (action === "favoritar") {

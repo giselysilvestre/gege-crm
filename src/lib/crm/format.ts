@@ -179,7 +179,9 @@ export function dentroJanela24h(ultimaInboundAt: string | null, agora = Date.now
   if (!ultimaInboundAt) return false;
   const t = Date.parse(ultimaInboundAt);
   if (Number.isNaN(t)) return false;
-  return agora - t < JANELA_WHATSAPP_MS;
+  const elapsed = agora - t;
+  if (elapsed < 0 || elapsed >= JANELA_WHATSAPP_MS) return false;
+  return true;
 }
 
 export function horasDesdeUltimaResposta(ultimaInboundAt: string | null, agora = Date.now()) {

@@ -2321,9 +2321,33 @@ body {
 .cand-hname-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 6px;
   min-width: 0;
+}
+
+.lista-fav-left {
+  flex-shrink: 0;
+  order: -1;
+}
+
+.lista-meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.lista-meta-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: auto;
+  max-width: 46%;
 }
 
 .lista-name-row .lista-name,
@@ -2338,10 +2362,6 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
-}
-
-.lista-item-fav {
-  background: linear-gradient(90deg, rgba(212, 160, 23, 0.06), transparent);
 }
 
 .lista-empty {
@@ -2686,18 +2706,11 @@ body {
   gap: 12px;
   align-items: flex-start;
   background: #fff;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
-.lista-item-nova {
-  background: #ecfdf5;
-}
-
-.lista-item-pendente {
-  background: #fffbeb;
-}
-
-.lista-item-nova.lista-item-pendente {
+/* Verde: não abriu + candidato esperando resposta. Depois de abrir → branco. */
+.lista-item-aguardando {
   background: #ecfdf5;
 }
 
@@ -2705,18 +2718,18 @@ body {
   background: #f9fafb;
 }
 
-.lista-item-nova:hover {
+.lista-item-aguardando:hover {
   background: #d1fae5;
 }
 
 .lista-item.sel,
 .lista-item.lista-item-checked {
-  background: #fef9c3;
+  background: #f3f4f6;
 }
 
-.lista-item-nova.sel,
-.lista-item-nova.lista-item-checked {
-  background: #fef9c3;
+.lista-item-aguardando.sel,
+.lista-item-aguardando.lista-item-checked {
+  background: #ecfdf5;
 }
 
 .lista-avatar-wrap {
@@ -2737,14 +2750,6 @@ body {
 
 .lista-avatar-dot--green {
   background: #22c55e;
-}
-
-.lista-avatar-dot--amber {
-  background: #f59e0b;
-}
-
-.lista-avatar-dot--red {
-  background: #ef4444;
 }
 
 .lista-avatar-dot--gray {
@@ -2816,16 +2821,6 @@ body {
   border-color: color-mix(in srgb, var(--funnel-inativo) 24%, transparent);
 }
 
-.lista-status-handoff {
-  background: color-mix(in srgb, var(--funnel-raspberry) 10%, transparent);
-  color: var(--funnel-raspberry);
-  border-color: color-mix(in srgb, var(--funnel-raspberry) 28%, transparent);
-  text-transform: uppercase;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
 /* Mesma paleta de etapa — reutilizável em cabeçalho, kanban, etc. */
 .etapa-tag {
   display: inline-flex;
@@ -2847,23 +2842,38 @@ body {
 
 .lista-top-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
-  flex-wrap: wrap;
-  row-gap: 4px;
 }
 
-.lista-agent-pill {
+.crm-contato-pill {
   flex-shrink: 0;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.3;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  text-transform: capitalize;
+}
+
+.crm-contato-pill--sm {
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
+.cand-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cand-name-row .cand-name {
+  min-width: 0;
 }
 
 .avatar {
@@ -2943,7 +2953,8 @@ body {
   flex-shrink: 0;
   font-size: 10px;
   color: #9ca3af;
-  margin-left: auto;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .conversa-panel {
@@ -3542,10 +3553,6 @@ body {
   color: #047857;
 }
 
-.wa-sender-row.wa-sender-manual .wa-sender-label {
-  color: #6d28d9;
-}
-
 .wa-sender-row.wa-sender-lead,
 .wa-sender-row.wa-sender-lead .wa-sender-label {
   color: #2563eb;
@@ -3556,33 +3563,6 @@ body {
   font-size: 11px;
   color: #6b7280;
   margin: 10px 0 4px;
-}
-
-.wa-agent-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  background: #fffbeb;
-  border-top: 1px solid #fde68a;
-  font-size: 12px;
-  color: #92400e;
-}
-
-.wa-agent-pause-btn {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: #dc2626;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.wa-agent-pause-btn:hover {
-  text-decoration: underline;
 }
 
 .wa-msg-group {
@@ -3624,11 +3604,6 @@ body {
   text-align: left;
 }
 
-.wa-bubble-manual {
-  outline: 1px solid rgba(109, 40, 217, 0.2);
-  outline-offset: 0;
-}
-
 .wa-meta-icon {
   flex-shrink: 0;
 }
@@ -3655,17 +3630,8 @@ body {
   border-top-right-radius: 0;
 }
 
-.wa-msg-out .wa-bubble-manual {
-  background: #e8f4fd;
-  outline: none;
-}
-
 .wa-msg-out .wa-bubble-agent .wa-meta-icon {
   color: #047857;
-}
-
-.wa-msg-out .wa-bubble-manual .wa-meta-icon {
-  color: #7c3aed;
 }
 
 .wa-text {
@@ -3731,56 +3697,6 @@ body {
 .wa-composer-field {
   flex: 1;
   min-width: 0;
-  position: relative;
-}
-
-.wa-composer-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.wa-composer-field-btn {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: #9ca3af;
-  cursor: pointer;
-}
-
-.wa-composer-field-btn:hover {
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-.wa-composer-tool {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: #6b7280;
-  cursor: pointer;
-}
-
-.wa-composer-tool:hover {
-  background: #f3f4f6;
-  color: #374151;
 }
 
 .wa-composer-input,
@@ -3788,7 +3704,7 @@ body {
   width: 100%;
   box-sizing: border-box;
   font-size: 14px;
-  padding: 11px 40px 11px 14px;
+  padding: 11px 14px;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   outline: none;
@@ -3822,6 +3738,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+}
+
+.wa-send-btn-red svg {
+  display: block;
+  margin-left: 1px;
 }
 
 .wa-send-btn-red:hover:not(:disabled) {

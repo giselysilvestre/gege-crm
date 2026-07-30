@@ -43,4 +43,6 @@ Cache do CRM no browser usa `localStorage` com prefixo `gege-crm-*`.
 ## Docs relacionados
 
 - [deploy.md](./deploy.md)
+- [crm-lista-conversas.md](./crm-lista-conversas.md) — **regras fixas** da lista Conversas (pills, favorito, sem Ana/handoff)
+- [funil-status.md](./funil-status.md)
 - [classificacao-geografica.md](./classificacao-geografica.md) — viabilidade geográfica (feature compartilhada com bot)

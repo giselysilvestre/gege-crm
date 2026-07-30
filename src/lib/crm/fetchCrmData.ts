@@ -9,9 +9,9 @@ import type {
   WhatsappMessage,
 } from "./types";
 import { FUNIL_ETAPAS } from "./types";
-import { diasSemResposta, precisaResposta, ultimaAtividadeFromSessao } from "./format";
+import { dentroJanela24h, precisaResposta, ultimaAtividadeFromSessao } from "./format";
 import { topExperiencias } from "./experiencia";
-import { inferirEtapaFunil, statusDetalhadoFromCandidatura, statusDot } from "./mapEtapa";
+import { inferirEtapaFunil, statusDetalhadoFromCandidatura } from "./mapEtapa";
 import { isCandidaturaMorta } from "@/lib/candidatura-status";
 
 function isEtapaFunilDb(v: string): v is EtapaFunil {
@@ -40,7 +40,7 @@ const IN_CHUNK = 40;
 /** PostgREST/Supabase devolve no máximo 1000 linhas por consulta — paginar acima disso. */
 const PAGE_SIZE = 1000;
 /** Paralelismo máximo de consultas .in() — evita saturar o Supabase. */
-const IN_PARALLEL = 8;
+const IN_PARALLEL = 12;
 
 async function mapInBatches<T, R>(
   items: T[],
@@ -70,14 +70,18 @@ async function fetchCandidaturasByIds(supabase: SupabaseClient, ids: string[]) {
     const { data, error } = await supabase
       .from("candidaturas")
       .select(
-        "id,vaga_id,candidato_id,status,distancia_km,motivo_reprovacao,score_compatibilidade,atualizado_em"
+        "id,vaga_id,candidato_id,status,distancia_km,motivo_reprovacao,score_compatibilidade,atualizado_em,arquivada,contato_humano_por"
       )
       .in("id", slice);
     if (error) throw error;
     return data ?? [];
   });
 
-  for (const row of parts.flat()) map.set(row.id as string, row);
+  for (const row of parts.flat()) {
+    // Arquivada = candidatura antiga; CRM só usa a ativa (mais recente).
+    if (row.arquivada === true) continue;
+    map.set(row.id as string, row);
+  }
   return map;
 }
 
@@ -105,6 +109,37 @@ async function fetchRowsByIds<T extends Record<string, unknown>>(
 }
 
 type UltimaMsgRow = { conteudo: string | null; criado_em: string };
+
+function sessaoTimestamp(s: SessaoRow): number {
+  return Date.parse(s.atualizado_em ?? s.criado_em ?? "") || 0;
+}
+
+/** Uma linha por candidatura (evita duplicar candidato com várias sessões WhatsApp). */
+function dedupeSessoesPorCandidatura(sessoes: SessaoRow[]): SessaoRow[] {
+  const porCandidatura = new Map<string, SessaoRow>();
+  const porCandidatoSemCandidatura = new Map<string, SessaoRow>();
+  const orphan: SessaoRow[] = [];
+
+  for (const s of sessoes) {
+    if (s.candidatura_id) {
+      const prev = porCandidatura.get(s.candidatura_id);
+      if (!prev || sessaoTimestamp(s) >= sessaoTimestamp(prev)) {
+        porCandidatura.set(s.candidatura_id, s);
+      }
+      continue;
+    }
+    if (s.candidato_id) {
+      const prev = porCandidatoSemCandidatura.get(s.candidato_id);
+      if (!prev || sessaoTimestamp(s) >= sessaoTimestamp(prev)) {
+        porCandidatoSemCandidatura.set(s.candidato_id, s);
+      }
+      continue;
+    }
+    orphan.push(s);
+  }
+
+  return [...porCandidatura.values(), ...porCandidatoSemCandidatura.values(), ...orphan];
+}
 
 async function fetchUltimaMensagemPorSessao(
   supabase: SupabaseClient,
@@ -190,6 +225,7 @@ async function fetchCandidaturaIdsByVaga(supabase: SupabaseClient, vagaId: strin
       .from("candidaturas")
       .select("id")
       .eq("vaga_id", vagaId)
+      .or("arquivada.is.null,arquivada.eq.false")
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     const batch = (data ?? []).map((r) => r.id as string);
@@ -255,7 +291,8 @@ export async function countCandidaturas(
       const { count, error } = await supabase
         .from("candidaturas")
         .select("*", { count: "exact", head: true })
-        .in("vaga_id", slice);
+        .in("vaga_id", slice)
+        .or("arquivada.is.null,arquivada.eq.false");
       if (error) throw error;
       total += count ?? 0;
     }
@@ -264,7 +301,8 @@ export async function countCandidaturas(
 
   const { count, error } = await supabase
     .from("candidaturas")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .or("arquivada.is.null,arquivada.eq.false");
   if (error) throw error;
   return count ?? 0;
 }
@@ -333,6 +371,8 @@ export async function fetchCrmRows(
     return tb - ta;
   });
 
+  sessoes = dedupeSessoesPorCandidatura(sessoes);
+
   const candidaturaById = await fetchCandidaturasByIds(supabase, candidaturaIds);
 
   const candidatoIds = Array.from(
@@ -353,7 +393,7 @@ export async function fetchCrmRows(
       ? fetchRowsByIds<Record<string, unknown>>(
           supabase,
           "candidatos_analise",
-          "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo,analise_completa",
+          "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo",
           "candidato_id",
           candidatoIds
         )
@@ -414,6 +454,8 @@ export async function fetchCrmRows(
   for (const s of sessoes) {
     const cand = s.candidato_id ? candidatoById.get(s.candidato_id) : null;
     const candRow = s.candidatura_id ? candidaturaById.get(s.candidatura_id) : null;
+    // Sem candidatura ativa (arquivada/inexistente): não entra no CRM.
+    if (s.candidatura_id && !candRow) continue;
     const analise = s.candidato_id ? analiseById.get(s.candidato_id) : null;
     const vagaIdRow = (candRow?.vaga_id as string | undefined) ?? null;
     const ultima = ultimaAtividadeFromSessao(s.ultima_inbound_at, s.ultima_outbound_at);
@@ -437,7 +479,6 @@ export async function fetchCrmRows(
       s.ultima_outbound_at,
       ultimaDir
     );
-    const diasInat = diasSemResposta(s.ultima_inbound_at, s.ultima_outbound_at);
 
     // Score CV = parecer do currículo (score_ia) puro — sem score_final nem score_compatibilidade.
     const scoreCv =
@@ -475,10 +516,10 @@ export async function fetchCrmRows(
       ultima_inbound_at: s.ultima_inbound_at,
       ultima_outbound_at: s.ultima_outbound_at,
       precisa_resposta: precisa,
-      status_dot: statusDot(etapaFunil, precisa, diasInat, statusDetalhado),
+      status_dot: dentroJanela24h(s.ultima_inbound_at) ? "green" : "gray",
       resumo_ia: s.resumo_ia,
       perfil_resumo: (analise?.perfil_resumo as string | null) ?? null,
-      analise_completa: (analise?.analise_completa as string | null) ?? null,
+      analise_completa: null,
       experiencias_cv: s.candidato_id
         ? topExperiencias(experienciasByCandidato.get(s.candidato_id) ?? [])
         : [],
@@ -492,6 +533,7 @@ export async function fetchCrmRows(
         s.etapa_funil && isEtapaFunilDb(s.etapa_funil) ? (s.etapa_funil as EtapaFunil) : null,
       sessao_atualizado_em: s.atualizado_em ?? null,
       candidatura_atualizado_em: (candRow?.atualizado_em as string | null) ?? null,
+      contato_humano_por: (candRow?.contato_humano_por as string | null) ?? null,
     });
   }
 
@@ -628,16 +670,20 @@ export async function enrichDashboardActivity(
   const sessionSet = new Set(sessionIds);
   const eventRows: { direcao: string; criado_em: string; sessao_id: string }[] = [];
   const ids = [...sessionSet];
+  const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
-    const slice = ids.slice(i, i + IN_CHUNK);
+    chunks.push(ids.slice(i, i + IN_CHUNK));
+  }
+  const parts = await mapInBatches(chunks, IN_PARALLEL, async (slice) => {
     const { data, error } = await supabase
       .from("whatsapp_eventos")
       .select("direcao,criado_em,sessao_id")
       .in("sessao_id", slice)
       .gte("criado_em", since.toISOString());
     if (error) throw error;
-    eventRows.push(...((data ?? []) as typeof eventRows));
-  }
+    return (data ?? []) as typeof eventRows;
+  });
+  eventRows.push(...parts.flat());
 
   const dayKeys: string[] = [];
   for (let i = 6; i >= 0; i--) {

@@ -215,8 +215,7 @@ export default function VisaoGeralDashboard({
           <MetricCard
             icon={<IconChat />}
             value={model.metricas_dia.conversas_ativas}
-            label="Conversas ativas"
-            hint="Última interação há 24h"
+            label="Janela 24h aberta"
           />
           <MetricCard
             icon={<IconChatPlus />}
@@ -231,18 +230,12 @@ export default function VisaoGeralDashboard({
           <MetricCard
             icon={<IconHeart />}
             value={model.metricas_dia.qualificados}
-            label="Qualificados"
-            hint={
-              model.metricas_dia.abordados_hoje > 0
-                ? `de ${model.metricas_dia.abordados_hoje} abordados hoje`
-                : undefined
-            }
+            label="Qualificados hoje"
           />
           <MetricCard
             icon={<IconSend />}
             value={model.metricas_dia.encaminhados_hoje}
-            label="Encaminhados"
-            hint="Marcados hoje no CRM"
+            label="Encaminhados hoje"
           />
         </div>
       </section>
@@ -336,14 +329,12 @@ export default function VisaoGeralDashboard({
       <section className="crm-funnel-panel crm-panel">
         <div className="crm-funnel-head">
           <h2 className="crm-funnel-title">Funil de progressão</h2>
-          <p className="nola-section-sub">Quantos candidatos atingiram cada etapa ou posterior</p>
         </div>
 
         <div className="crm-funnel-bars" role="img" aria-label="Funil de progressão de candidatos">
-          {model.funil_progressao.map((step, i) => {
+          {model.funil_progressao.map((step) => {
             const widthPct = funnelBarWidthPct(step.count, maxFunil);
-            const conv =
-              i < model.funil_progressao.length - 1 ? step.pct_para_proximo : null;
+            const conv = step.pct_para_proximo;
             const fillClass = FUNNEL_FILL_CLASS[step.etapa] ?? "fill-abordado";
 
             return (
@@ -356,7 +347,9 @@ export default function VisaoGeralDashboard({
                   />
                 </div>
                 <span className="funnel-val">{step.count.toLocaleString("pt-BR")}</span>
-                <span className="funnel-pct">{conv != null ? `${Math.round(conv)}%` : ""}</span>
+                <span className="funnel-pct">
+                  {conv != null ? `${conv.toLocaleString("pt-BR")}%` : ""}
+                </span>
               </div>
             );
           })}

@@ -24,8 +24,13 @@ import {
   FUNIL_PRINCIPAL,
   FUNIL_SAIDAS,
   MOTIVOS_REPROVACAO,
-  STATUS_DETALHADO_LABELS,
 } from "@/lib/crm/types";
+import {
+  labelEtapaLista,
+  interlocutorLista,
+  listaItemAguardandoResposta,
+  isOutboundHumanoCrm,
+} from "@/lib/crm/listaConversasUi";
 import {
   avatarClass,
   iniciais,
@@ -36,7 +41,6 @@ import {
   tempoRelativo,
   truncar,
   formatKanbanCardTime,
-  isMensagemManualCrm,
   candidatoMatchBusca,
   dentroJanela24h,
   diasSemResposta,
@@ -44,6 +48,32 @@ import {
 import { buildMetricsFromRows } from "@/lib/crm/metricsClient";
 import { nomePrimeiroUltimo, primeiroNome, labelTag } from "@/lib/crm";
 import { formatMensagemExibicao } from "@/lib/crm/formatMensagem";
+import { readJsonResponse } from "@/lib/parseJsonResponse";
+
+type ApiErrorJson = { error?: string };
+type AcaoResponseJson = ApiErrorJson & {
+  ok?: number;
+  erros?: unknown[];
+  aviso?: string;
+  vaga_nome?: string;
+};
+type MessagesResponseJson = ApiErrorJson & { mensagens?: WhatsappMessage[] };
+type ConfigResponseJson = { manualSendEnabled?: boolean };
+type AlertasResponseJson = ApiErrorJson & {
+  alertas?: {
+    id: string;
+    tipo: string;
+    sessao_id: string | null;
+    titulo: string;
+    detalhe: string | null;
+    candidato_nome?: string | null;
+  }[];
+  resumo?: {
+    sem_resposta_ana_1h?: number;
+    sem_resposta_gege_24h?: number;
+    entrevista_marcada?: number;
+  } | null;
+};
 import { proximaEtapaFunil } from "@/lib/crm/mapEtapa";
 import {
   MODELOS_MENSAGEM_ACAO,
@@ -96,50 +126,10 @@ function IconFilter() {
   );
 }
 
-function IconComposerReorder() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path d="M8 9l-3 3 3 3M16 9l3 3-3 3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconComposerDoc() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path
-        d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconComposerMic() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path
-        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-      <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function IconSend() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path
-        d="m5 12 14-7-7 14 2-5 5-2Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+      <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
     </svg>
   );
 }
@@ -149,16 +139,21 @@ function IconRobot({ className }: { className?: string }) {
     <svg
       className={className}
       viewBox="0 0 24 24"
-      width="12"
-      height="12"
+      width="14"
+      height="14"
       fill="none"
       aria-hidden="true"
     >
-      <rect x="5" y="8" width="14" height="11" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M9 5V8M15 5V8M12 5V8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="9.5" cy="13" r="1" fill="currentColor" />
-      <circle cx="14.5" cy="13" r="1" fill="currentColor" />
-      <path d="M10 17h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M8 5V3M12 5V2M16 5V3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <rect x="6" y="5" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="9.5" cy="10" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="10" r="1" fill="currentColor" />
+      <path d="M10 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -168,18 +163,13 @@ function IconHuman({ className }: { className?: string }) {
     <svg
       className={className}
       viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
+      width="14"
+      height="14"
+      fill="currentColor"
       aria-hidden="true"
     >
-      <circle cx="12" cy="8" r="3" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
+      <circle cx="12" cy="7" r="3.5" />
+      <path d="M5.5 21c0-3.75 2.9-6.5 6.5-6.5s6.5 2.75 6.5 6.5" />
     </svg>
   );
 }
@@ -290,7 +280,7 @@ function sortCandidatos(list: CrmCandidatoRow[], sortBy: SortKey): CrmCandidatoR
 }
 
 /** Bump quando mudar o shape de CrmCandidatoRow (invalida cache em memória). */
-const CRM_CACHE_SCHEMA = 9;
+const CRM_CACHE_SCHEMA = 10;
 
 type CrmCacheEntry = {
   schema: number;
@@ -298,7 +288,6 @@ type CrmCacheEntry = {
   metrics: CrmMetrics;
   dashboard: CrmDashboard;
   vagas: VagaOption[];
-  activity?: boolean;
 };
 
 const crmCacheKey = (clienteId: string, vagaId: string) =>
@@ -308,7 +297,7 @@ function prefetchMessages(sessaoId: string, cache: Map<string, WhatsappMessage[]
   if (cache.has(sessaoId)) return;
   const params = new URLSearchParams({ sessionId: sessaoId, messagesOnly: "1" });
   fetch(`/api/whatsapp/crm?${params}`, { cache: "no-store" })
-    .then((r) => r.json())
+    .then((r) => readJsonResponse<{ mensagens?: WhatsappMessage[] }>(r))
     .then((j) => {
       if (j.mensagens) cache.set(sessaoId, j.mensagens);
     })
@@ -374,6 +363,7 @@ export default function WhatsappCrmClient({
   const crmCache = useRef<Map<string, CrmCacheEntry>>(new Map());
   const pinnedRowRef = useRef<CrmCandidatoRow | null>(null);
   const loadCrmGen = useRef(0);
+  const loadCrmInflight = useRef<Map<string, Promise<void>>>(new Map());
   const loadMsgGen = useRef(0);
   const prevVagaRef = useRef(vagaId);
   const prevClienteRef = useRef(clienteId);
@@ -385,6 +375,7 @@ export default function WhatsappCrmClient({
   }, []);
   const [filtroEtapa, setFiltroEtapa] = useState<EtapaFunil | "">("");
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
+  const [filtroContatoHumano, setFiltroContatoHumano] = useState("");
   const [buscaNome, setBuscaNome] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recente");
   const [filtrosOpen, setFiltrosOpen] = useState(false);
@@ -549,7 +540,7 @@ export default function WhatsappCrmClient({
   const vagasRef = useRef<VagaOption[]>([]);
   vagasRef.current = vagas;
 
-  const applyCrmPayload = useCallback((json: Record<string, unknown>, includeActivity: boolean) => {
+  const applyCrmPayload = useCallback((json: Record<string, unknown>) => {
     if (Array.isArray(json.vagas) && (json.vagas as VagaOption[]).length > 0) {
       const nextVagas = json.vagas as VagaOption[];
       vagasRef.current = nextVagas;
@@ -569,20 +560,17 @@ export default function WhatsappCrmClient({
         Array.isArray(json.vagas) && (json.vagas as VagaOption[]).length > 0
           ? (json.vagas as VagaOption[])
           : vagasRef.current,
-      activity: includeActivity,
     });
   }, [clienteId, vagaId, mergeFavoritoOverrides]);
 
   const loadCrm = useCallback(
-    async (opts?: { includeActivity?: boolean; force?: boolean }) => {
+    async (opts?: { force?: boolean }) => {
       const key = crmCacheKey(clienteId, vagaId);
       const cached = crmCache.current.get(key);
-      const wantActivity = Boolean(opts?.includeActivity);
       const canUseCache =
         cached &&
         cached.schema === CRM_CACHE_SCHEMA &&
         !opts?.force &&
-        (!wantActivity || cached.activity) &&
         cached.rows.length > 0;
 
       if (canUseCache) {
@@ -592,7 +580,28 @@ export default function WhatsappCrmClient({
         if (cached.vagas.length) setVagas(cached.vagas);
         setLoadingCrm(false);
         setRefreshingCrm(false);
-      } else if (!cached) {
+        return;
+      }
+
+      const requestKey = `${key}|${opts?.force ? "force" : "normal"}`;
+      if (!opts?.force) {
+        const inflight = loadCrmInflight.current.get(requestKey);
+        if (inflight) {
+          await inflight;
+          const fresh = crmCache.current.get(key);
+          if (fresh && fresh.schema === CRM_CACHE_SCHEMA && fresh.rows.length > 0) {
+            setRows(fresh.rows);
+            setMetrics(fresh.metrics);
+            setDashboard(fresh.dashboard);
+            if (fresh.vagas.length) setVagas(fresh.vagas);
+          }
+          setLoadingCrm(false);
+          setRefreshingCrm(false);
+          return;
+        }
+      }
+
+      if (!cached) {
         setLoadingCrm(true);
       } else {
         setRefreshingCrm(true);
@@ -600,34 +609,48 @@ export default function WhatsappCrmClient({
 
       setError(null);
       const gen = ++loadCrmGen.current;
-      try {
-        const params = new URLSearchParams();
-        if (vagaId) params.set("vagaId", vagaId);
-        if (clienteId) params.set("clienteId", clienteId);
-        if (wantActivity) params.set("includeActivity", "1");
-        if (vagasRef.current.length > 0) params.set("skipVagas", "1");
-        params.set("skipPreview", "1");
-        const res = await fetch(`/api/whatsapp/crm?${params}`, {
-          cache: "no-store",
-          signal: AbortSignal.timeout(120_000),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "Erro ao carregar");
-        if (gen !== loadCrmGen.current) return;
-        applyCrmPayload(json, wantActivity);
-      } catch (e) {
-        if (gen === loadCrmGen.current) {
-          const msg =
-            e instanceof DOMException && e.name === "TimeoutError"
-              ? "Carregamento demorou demais — tente de novo ou filtre por vaga"
-              : e instanceof Error && e.message
-                ? e.message
-                : "Erro ao carregar candidatos";
-          setError(msg);
+
+      const job = (async () => {
+        try {
+          const params = new URLSearchParams();
+          if (vagaId) params.set("vagaId", vagaId);
+          if (clienteId) params.set("clienteId", clienteId);
+          if (vagasRef.current.length > 0) params.set("skipVagas", "1");
+          params.set("skipPreview", "1");
+          const res = await fetch(`/api/whatsapp/crm?${params}`, {
+            cache: "no-store",
+            signal: AbortSignal.timeout(120_000),
+          });
+          const json = await readJsonResponse<{ error?: string } & Record<string, unknown>>(res);
+          if (!res.ok) throw new Error(json.error ?? "Erro ao carregar");
+          if (gen !== loadCrmGen.current) return;
+          applyCrmPayload(json);
+        } catch (e) {
+          if (gen === loadCrmGen.current) {
+            const msg =
+              e instanceof DOMException && e.name === "TimeoutError"
+                ? "Carregamento demorou demais — tente de novo ou filtre por vaga"
+                : e instanceof Error && e.message
+                  ? e.message
+                  : "Erro ao carregar candidatos";
+            setError(msg);
+          }
+        } finally {
+          if (gen === loadCrmGen.current) {
+            setLoadingCrm(false);
+            setRefreshingCrm(false);
+          }
         }
+      })();
+
+      if (!opts?.force) {
+        loadCrmInflight.current.set(requestKey, job);
+      }
+
+      try {
+        await job;
       } finally {
-        setLoadingCrm(false);
-        setRefreshingCrm(false);
+        loadCrmInflight.current.delete(requestKey);
       }
     },
     [clienteId, vagaId, applyCrmPayload]
@@ -654,7 +677,7 @@ export default function WhatsappCrmClient({
           messagesOnly: "1",
         });
         const res = await fetch(`/api/whatsapp/crm?${params}`, { cache: "no-store" });
-        const json = await res.json();
+        const json = await readJsonResponse<MessagesResponseJson>(res);
         if (!res.ok) throw new Error(json.error ?? "Erro ao carregar mensagens");
         const msgs = json.mensagens ?? [];
         messagesCache.current.set(sessaoId, msgs);
@@ -673,7 +696,7 @@ export default function WhatsappCrmClient({
 
   useEffect(() => {
     fetch("/api/whatsapp/config")
-      .then((r) => r.json())
+      .then((r) => readJsonResponse<ConfigResponseJson>(r))
       .then((j) => setManualSendEnabled(Boolean(j.manualSendEnabled)))
       .catch(() => setManualSendEnabled(false));
   }, []);
@@ -681,7 +704,7 @@ export default function WhatsappCrmClient({
   const loadAlertas = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/alertas?status=ativo", { cache: "no-store" });
-      const json = await res.json();
+      const json = await readJsonResponse<AlertasResponseJson>(res);
       if (!res.ok) return;
       setAlertas(json.alertas ?? []);
       setAlertasResumo(json.resumo ?? null);
@@ -709,8 +732,8 @@ export default function WhatsappCrmClient({
   }, [vagaId, clienteId, selectSessao]);
 
   useEffect(() => {
-    loadCrm({ includeActivity: view === "funil" });
-  }, [loadCrm, view, clienteId, vagaId]);
+    loadCrm();
+  }, [loadCrm, clienteId, vagaId]);
 
   useEffect(() => {
     if (!selected) {
@@ -730,6 +753,39 @@ export default function WhatsappCrmClient({
     if (pinnedRowRef.current?.sessao_id === selected) return pinnedRowRef.current;
     return null;
   }, [rows, selected]);
+
+  useEffect(() => {
+    if (!selected || !selecionada?.candidato_id || selecionada.analise_completa) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ sessionId: selected, analiseOnly: "1" });
+    fetch(`/api/whatsapp/crm?${params}`, { cache: "no-store" })
+      .then((r) => readJsonResponse<{ analise_completa?: string | null; perfil_resumo?: string | null }>(r))
+      .then((json) => {
+        if (cancelled || (!json.analise_completa && !json.perfil_resumo)) return;
+        setRows((prev) =>
+          prev.map((r) =>
+            r.sessao_id === selected
+              ? {
+                  ...r,
+                  analise_completa: json.analise_completa ?? r.analise_completa,
+                  perfil_resumo: json.perfil_resumo ?? r.perfil_resumo,
+                }
+              : r
+          )
+        );
+        if (pinnedRowRef.current?.sessao_id === selected) {
+          pinnedRowRef.current = {
+            ...pinnedRowRef.current,
+            analise_completa: json.analise_completa ?? pinnedRowRef.current.analise_completa,
+            perfil_resumo: json.perfil_resumo ?? pinnedRowRef.current.perfil_resumo,
+          };
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, selecionada?.candidato_id, selecionada?.analise_completa]);
 
   const chatMessages = messagesSessaoId === selected ? mensagens : [];
   const chatLoading =
@@ -785,12 +841,25 @@ export default function WhatsappCrmClient({
     if (filtroFavoritos) {
       list = list.filter((r) => r.favorito_crm);
     }
+    if (filtroContatoHumano === "__sem__") {
+      list = list.filter((r) => !r.contato_humano_por);
+    } else if (filtroContatoHumano) {
+      list = list.filter((r) => r.contato_humano_por === filtroContatoHumano);
+    }
     const q = buscaNome.trim();
     if (q) {
       list = list.filter((r) => candidatoMatchBusca(r, q));
     }
     return list;
-  }, [rows, buscaNome, filtroFavoritos]);
+  }, [rows, buscaNome, filtroFavoritos, filtroContatoHumano]);
+
+  const contatosHumanoOpcoes = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (r.contato_humano_por) set.add(r.contato_humano_por);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [rows]);
 
   const listaFiltrada = useMemo(() => {
     const list = filtroEtapa
@@ -887,6 +956,7 @@ export default function WhatsappCrmClient({
     (vagaId ? 1 : 0) +
     (filtroEtapa ? 1 : 0) +
     (filtroFavoritos ? 1 : 0) +
+    (filtroContatoHumano ? 1 : 0) +
     (sortBy !== "recente" ? 1 : 0);
 
   const isConversasView = view === "conversas";
@@ -1003,7 +1073,7 @@ export default function WhatsappCrmClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "favoritar", sessaoId, favorito: novo }),
       });
-      const json = await res.json();
+      const json = await readJsonResponse<AcaoResponseJson>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro ao favoritar");
       setRows((prev) => patchRows(prev));
       const cachedAfter = crmCache.current.get(key);
@@ -1036,7 +1106,7 @@ export default function WhatsappCrmClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, sessaoIds: checkedIds, ...extra }),
       });
-      const json = await res.json();
+      const json = await readJsonResponse<AcaoResponseJson>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro na ação em lote");
       const ok = json.ok ?? checkedIds.length;
       const erros = json.erros?.length ?? 0;
@@ -1050,7 +1120,7 @@ export default function WhatsappCrmClient({
       setMultiselectMode(false);
       setBulkMenuOpen(false);
       setModal(null);
-      await loadCrm({ includeActivity: view === "funil", force: true });
+      await loadCrm({ force: true });
       if (selected) await loadMessages(selected, { force: true });
     } catch (err) {
       setActionMsg(err instanceof Error ? err.message : String(err));
@@ -1087,7 +1157,9 @@ export default function WhatsappCrmClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "favoritar", sessaoId: sid, favorito: true }),
         });
-        const json = await res.json().catch(() => ({}));
+        const json = await readJsonResponse<AcaoResponseJson>(res).catch(
+          () => ({} as AcaoResponseJson)
+        );
         if (res.ok) {
           ok += 1;
         } else {
@@ -1112,7 +1184,7 @@ export default function WhatsappCrmClient({
     } catch (err) {
       for (const sid of alvos) favoritoOverridesRef.current.delete(sid);
       setActionMsg(err instanceof Error ? err.message : String(err));
-      await loadCrm({ includeActivity: view === "funil", force: true });
+      await loadCrm({ force: true });
     } finally {
       setBulkProcessing(false);
     }
@@ -1136,7 +1208,7 @@ export default function WhatsappCrmClient({
               etapaDestino: etapaDestinoLote,
             }),
           });
-          const json = await res.json();
+          const json = await readJsonResponse<AcaoResponseJson>(res);
           if (!res.ok) throw new Error(json.error ?? "Erro ao mover etapa");
           ok += 1;
         } catch (err) {
@@ -1152,7 +1224,7 @@ export default function WhatsappCrmClient({
       setEtapaDestinoLote("");
       if (checkedIds.length > 0) sairMultiselect();
       setModal(null);
-      await loadCrm({ includeActivity: view === "funil", force: true });
+      await loadCrm({ force: true });
       if (selected) await loadMessages(selected, { force: true });
     } finally {
       setBulkProcessing(false);
@@ -1172,7 +1244,7 @@ export default function WhatsappCrmClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, sessaoId: sid, ...extra }),
     });
-    const json = await res.json();
+    const json = await readJsonResponse<AcaoResponseJson>(res);
     if (!res.ok) {
       setActionMsg(json.error ?? "Erro na ação");
       return;
@@ -1180,7 +1252,7 @@ export default function WhatsappCrmClient({
     setActionMsg(json.aviso ?? "Ok");
     setModal(null);
     messagesCache.current.delete(sid);
-    await loadCrm({ includeActivity: view === "funil" });
+    await loadCrm();
     if (selected === sid || sessaoIdOverride) await loadMessages(sid, { force: true });
   }
 
@@ -1237,7 +1309,7 @@ export default function WhatsappCrmClient({
           enviarMensagem: enviarMsgMovido,
         }),
       });
-      const json = await res.json();
+      const json = await readJsonResponse<AcaoResponseJson>(res);
       if (!res.ok) {
         setActionMsg(json.error ?? "Erro ao mover de vaga");
         return;
@@ -1250,7 +1322,7 @@ export default function WhatsappCrmClient({
       messagesCache.current.delete(selected);
       setModal(null);
       setVagaDestinoMovido("");
-      await loadCrm({ includeActivity: view === "funil", force: true });
+      await loadCrm({ force: true });
       if (selected) await loadMessages(selected, { force: true });
     } catch (e) {
       setActionMsg(e instanceof Error ? e.message : String(e));
@@ -1271,7 +1343,7 @@ export default function WhatsappCrmClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "enviar", sessaoId: selected, mensagem: texto }),
       });
-      const json = await res.json();
+      const json = await readJsonResponse<AcaoResponseJson>(res);
       if (!res.ok) throw new Error(json.error ?? "Falha ao enviar");
       await loadMessages(selected, { force: true });
       setActionMsg(
@@ -1293,14 +1365,6 @@ export default function WhatsappCrmClient({
   const janela24hAberta = selecionada
     ? dentroJanela24h(selecionada.ultima_inbound_at)
     : false;
-
-  const agenteAtivo =
-    Boolean(selecionada) &&
-    selecionada!.status_sessao !== "encerrado" &&
-    selecionada!.etapa_funil !== "contratado" &&
-    !["inscrito_reprovado", "inscrito_falha", "abordado_reprovado_sem_resposta", "abordado_negativa", "qualificado_reprovado_entrevista", "encaminhado_reprovado"].includes(
-      selecionada!.status_detalhado ?? ""
-    );
 
   const classificacaoChat = selecionada
     ? [
@@ -1411,6 +1475,22 @@ export default function WhatsappCrmClient({
                   {[...FUNIL_PRINCIPAL, ...FUNIL_SAIDAS].map((e) => (
                     <option key={e} value={e}>
                       {ETAPA_LABELS[e]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="crm-filters-field">
+                <span>Em contato</span>
+                <select
+                  className="crm-toolbar-select"
+                  value={filtroContatoHumano}
+                  onChange={(e) => setFiltroContatoHumano(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  <option value="__sem__">Sem marcação</option>
+                  {contatosHumanoOpcoes.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
                     </option>
                   ))}
                 </select>
@@ -1721,6 +1801,28 @@ export default function WhatsappCrmClient({
                           role="menuitem"
                           onClick={() => {
                             setBulkMenuOpen(false);
+                            void runBulkAction("em_contato_lote");
+                          }}
+                        >
+                          Em contato
+                        </button>
+                        <button
+                          type="button"
+                          className="lista-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setBulkMenuOpen(false);
+                            void runBulkAction("em_contato_lote", { desmarcar: true });
+                          }}
+                        >
+                          Remover em contato
+                        </button>
+                        <button
+                          type="button"
+                          className="lista-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setBulkMenuOpen(false);
                             abrirModal("resumo_lote");
                           }}
                         >
@@ -1849,11 +1951,13 @@ export default function WhatsappCrmClient({
                       <span
                         className={`lista-status-pill etapa-tag ${listaStatusClass(selecionada.etapa_funil)}`}
                       >
-                        {selecionada.status_detalhado
-                          ? STATUS_DETALHADO_LABELS[selecionada.status_detalhado] ??
-                            ETAPA_LABELS[selecionada.etapa_funil]
-                          : ETAPA_LABELS[selecionada.etapa_funil]}
+                        {labelEtapaLista(selecionada.etapa_funil)}
                       </span>
+                      {interlocutorLista(selecionada.contato_humano_por) && (
+                        <span className="crm-contato-pill" title="Marcado em contato no CRM">
+                          {interlocutorLista(selecionada.contato_humano_por)}
+                        </span>
+                      )}
                       {selecionada.curriculo_url && (
                         <a
                           href={selecionada.curriculo_url}
@@ -1889,6 +1993,21 @@ export default function WhatsappCrmClient({
                               }}
                             >
                               Favoritar
+                            </button>
+                            <button
+                              type="button"
+                              className="cand-actions-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuAcoesOpen(false);
+                                void runAction("em_contato", {
+                                  desmarcar: !!selecionada.contato_humano_por,
+                                });
+                              }}
+                            >
+                              {selecionada.contato_humano_por
+                                ? "Remover em contato"
+                                : "Em contato"}
                             </button>
                             <button
                               type="button"
@@ -1975,53 +2094,37 @@ export default function WhatsappCrmClient({
                         )}
                       {chatMessages.map((m, idx) => {
                         const isOut = m.direcao === "outbound";
-                        const manualPainel = isMensagemManualCrm(m.direcao, m.tipo_mensagem);
+                        const humanoCrm = isOutboundHumanoCrm(m.direcao, m.tipo_mensagem);
                         const diaAtual = chaveDiaConversa(m.criado_em);
                         const diaAnterior =
                           idx > 0 ? chaveDiaConversa(chatMessages[idx - 1].criado_em) : null;
                         const mostrarDia = diaAtual && diaAtual !== diaAnterior;
                         const senderLabel = isOut
-                          ? manualPainel
-                            ? "Você"
-                            : "Ana"
+                          ? "Ana"
                           : primeiroNome(selecionada.candidato_nome);
-                        const senderRowClass = isOut
-                          ? manualPainel
-                            ? "wa-sender-manual"
-                            : "wa-sender-agent"
-                          : "wa-sender-lead";
+                        const senderRowClass = isOut ? "wa-sender-agent" : "wa-sender-lead";
                         return (
                           <div key={m.id} className="wa-msg-group">
                             {mostrarDia && (
                               <div className="wa-day-pill">{formatDiaConversa(m.criado_em)}</div>
                             )}
                             <div className={`wa-msg ${isOut ? "wa-msg-out" : "wa-msg-in"}`}>
-                              <div
-                                className={`wa-bubble${manualPainel ? " wa-bubble-manual" : ""}${isOut && !manualPainel ? " wa-bubble-agent" : ""}`}
-                              >
+                              <div className={`wa-bubble${isOut ? " wa-bubble-agent" : ""}`}>
                                 <div className={`wa-sender-row ${senderRowClass}`}>
                                   <span className="wa-sender-label">{senderLabel}</span>
                                 </div>
                                 <span className="wa-text">{formatMensagemExibicao(m.conteudo)}</span>
                                 <span className="wa-meta">
                                   <span className="wa-time">{formatHoraMsg(m.criado_em)}</span>
-                                  {isOut && !manualPainel && (
-                                    <IconRobot className="wa-meta-icon" />
-                                  )}
-                                  {isOut && manualPainel && (
-                                    <IconHuman className="wa-meta-icon" />
-                                  )}
-                                  {isOut && !manualPainel && (
+                                  {isOut &&
+                                    (humanoCrm ? (
+                                      <IconHuman className="wa-meta-icon" />
+                                    ) : (
+                                      <IconRobot className="wa-meta-icon" />
+                                    ))}
+                                  {isOut && (
                                     <span className="wa-ticks" aria-hidden>
                                       ✓✓
-                                    </span>
-                                  )}
-                                  {manualPainel && (
-                                    <span
-                                      className="wa-ticks wa-ticks-pending"
-                                      title="Enviada à Kapso — entrega só dentro da janela de 24h"
-                                    >
-                                      ✓
                                     </span>
                                   )}
                                 </span>
@@ -2041,24 +2144,11 @@ export default function WhatsappCrmClient({
                     </div>
 
                     <div className="wa-composer-wrap">
-                      {agenteAtivo && (
-                        <div className="wa-agent-bar">
-                          <span>Agente ativo nesta sessão</span>
-                          <button
-                            type="button"
-                            className="wa-agent-pause-btn"
-                            onClick={() => void runAction("pausar_agente")}
-                          >
-                            Pausar Agente
-                          </button>
-                        </div>
-                      )}
-
                       <div className="wa-composer-bar">
                         <div className="wa-composer-field">
                           <input
                             className="wa-composer-input"
-                            placeholder="Enviar mensagem como SDR..."
+                            placeholder="Enviar mensagem como Ana..."
                             value={msgInput}
                             onChange={(e) => setMsgInput(e.target.value)}
                             onKeyDown={(e) => {
@@ -2074,52 +2164,26 @@ export default function WhatsappCrmClient({
                               !janela24hAberta
                             }
                           />
-                          <button
-                            type="button"
-                            className="wa-composer-field-btn"
-                            title="Reordenar"
-                            aria-label="Reordenar"
-                          >
-                            <IconComposerReorder />
-                          </button>
                         </div>
-                        <div className="wa-composer-actions">
-                          <button
-                            type="button"
-                            className="wa-composer-tool"
-                            title="Anexar documento"
-                            aria-label="Anexar documento"
-                          >
-                            <IconComposerDoc />
-                          </button>
-                          <button
-                            type="button"
-                            className="wa-composer-tool"
-                            title="Gravar áudio"
-                            aria-label="Gravar áudio"
-                          >
-                            <IconComposerMic />
-                          </button>
-                          <button
-                            type="button"
-                            className="wa-send-btn-red"
-                            onClick={enviarMensagem}
-                            disabled={
-                              enviandoMsg ||
-                              !msgInput.trim() ||
-                              manualSendEnabled === false ||
-                              !janela24hAberta
-                            }
-                            title={
-                              kapsoPronto
-                                ? "Enviar pelo WhatsApp"
-                                : "Configure Kapso no .env.local"
-                            }
-                            aria-label="Enviar mensagem"
-                          >
-                            {enviandoMsg ? "…" : <IconSend />}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          className="wa-send-btn-red"
+                          onClick={enviarMensagem}
+                          disabled={
+                            enviandoMsg ||
+                            !msgInput.trim() ||
+                            manualSendEnabled === false ||
+                            !janela24hAberta
+                          }
+                          title={
+                            kapsoPronto
+                              ? "Enviar pelo WhatsApp"
+                              : "Configure Kapso no .env.local"
+                          }
+                          aria-label="Enviar mensagem"
+                        >
+                          {enviandoMsg ? "…" : <IconSend />}
+                        </button>
                       </div>
                       {!janela24hAberta && (
                         <p className="wa-composer-hint">
@@ -2192,7 +2256,10 @@ export default function WhatsappCrmClient({
           </div>
         )}
 
-        {view === "funil" && (
+        {view === "funil" && loadingCrm && rows.length === 0 && (
+          <div className="crm-loading crm-loading-board">Carregando visão geral…</div>
+        )}
+        {view === "funil" && !(loadingCrm && rows.length === 0) && (
           <VisaoGeralDashboard
             rows={rows}
             metrics={metrics}
@@ -2686,16 +2753,13 @@ const ListaConversaItem = memo(function ListaConversaItem({
 }) {
   const destaque = row.precisa_resposta;
   const preview = previewListaMsg(row);
-  const etapaLabel = (
-    row.status_detalhado
-      ? STATUS_DETALHADO_LABELS[row.status_detalhado] ?? ETAPA_LABELS[row.etapa_funil]
-      : ETAPA_LABELS[row.etapa_funil]
-  ).toLowerCase();
-  const nova = !aberta;
+  const etapaLabel = labelEtapaLista(row.etapa_funil);
+  const interlocutor = interlocutorLista(row.contato_humano_por);
+  const aguardandoResposta = listaItemAguardandoResposta(aberta, destaque);
 
   return (
     <div
-      className={`lista-item${selected ? " sel" : ""}${checked ? " lista-item-checked" : ""}${multiselectMode ? " lista-item-multiselect" : ""}${row.favorito_crm ? " lista-item-fav" : ""}${nova ? " lista-item-nova" : ""}${destaque ? " lista-item-pendente" : ""}`}
+      className={`lista-item${selected ? " sel" : ""}${checked ? " lista-item-checked" : ""}${multiselectMode ? " lista-item-multiselect" : ""}${aguardandoResposta ? " lista-item-aguardando" : ""}`}
       onClick={onSelect}
     >
       {multiselectMode && (
@@ -2710,16 +2774,16 @@ const ListaConversaItem = memo(function ListaConversaItem({
         </div>
         <span
           className={`lista-avatar-dot lista-avatar-dot--${row.status_dot}`}
-          aria-hidden="true"
+          title={row.status_dot === "green" ? "Janela 24h aberta" : "Janela 24h fechada"}
+          aria-label={row.status_dot === "green" ? "Janela 24h aberta" : "Janela 24h fechada"}
         />
       </div>
       <div className="lista-info">
         <div className="lista-top-row">
           <div className="lista-name-row">
-            <span className="lista-name">{nomePrimeiroUltimo(row.candidato_nome)}</span>
             <button
               type="button"
-              className={`fav-star-btn sm${row.favorito_crm ? " on" : ""}`}
+              className={`fav-star-btn sm lista-fav-left${row.favorito_crm ? " on" : ""}`}
               title={row.favorito_crm ? "Remover dos favoritos" : "Favoritar conversa"}
               aria-pressed={row.favorito_crm}
               aria-label={row.favorito_crm ? "Remover dos favoritos" : "Favoritar conversa"}
@@ -2727,13 +2791,17 @@ const ListaConversaItem = memo(function ListaConversaItem({
             >
               {row.favorito_crm ? "★" : "☆"}
             </button>
+            <span className="lista-name">{nomePrimeiroUltimo(row.candidato_nome)}</span>
           </div>
-          <span className={`lista-status-pill ${listaStatusClass(row.etapa_funil)}`}>
-            {etapaLabel}
-          </span>
-          <span className="lista-agent-pill">Ana</span>
-          {destaque && <span className="lista-status-pill lista-status-handoff">handoff</span>}
-          <span className="lista-time">{tempoRelativo(row.ultima_data)}</span>
+          <div className="lista-meta-col">
+            <div className="lista-meta-pills">
+              <span className={`lista-status-pill ${listaStatusClass(row.etapa_funil)}`}>
+                {etapaLabel}
+              </span>
+              {interlocutor && <span className="crm-contato-pill">{interlocutor}</span>}
+            </div>
+            <span className="lista-time">{tempoRelativo(row.ultima_data)}</span>
+          </div>
         </div>
         {preview && <div className="lista-last">{preview}</div>}
       </div>
@@ -2773,7 +2841,12 @@ function KanbanCard({
       onDragEnd={onDragEnd}
       onClick={onSelect}
     >
-      <div className="cand-name">{nomePrimeiroUltimo(row.candidato_nome)}</div>
+      <div className="cand-name-row">
+        <div className="cand-name">{nomePrimeiroUltimo(row.candidato_nome)}</div>
+        {row.contato_humano_por && (
+          <span className="crm-contato-pill crm-contato-pill--sm">{row.contato_humano_por}</span>
+        )}
+      </div>
       <div className={`cand-subline${phone ? "" : " cand-subline--muted"}`}>{subline}</div>
       <div className="cand-time">{formatKanbanCardTime(when)}</div>
     </div>

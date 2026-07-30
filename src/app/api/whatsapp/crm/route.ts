@@ -25,6 +25,28 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseAdmin();
 
+    if (url.searchParams.get("analiseOnly") === "1" && sessionId) {
+      const { data: sessao, error: sessaoErr } = await supabase
+        .from("whatsapp_sessoes")
+        .select("candidato_id")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (sessaoErr) throw sessaoErr;
+      if (!sessao?.candidato_id) {
+        return NextResponse.json({ analise_completa: null, perfil_resumo: null });
+      }
+      const { data: analise, error: analiseErr } = await supabase
+        .from("candidatos_analise")
+        .select("analise_completa,perfil_resumo")
+        .eq("candidato_id", sessao.candidato_id)
+        .maybeSingle();
+      if (analiseErr) throw analiseErr;
+      return NextResponse.json({
+        analise_completa: (analise?.analise_completa as string | null) ?? null,
+        perfil_resumo: (analise?.perfil_resumo as string | null) ?? null,
+      });
+    }
+
     if (messagesOnly && sessionId) {
       const mensagens = await fetchMessages(supabase, sessionId);
       return NextResponse.json(

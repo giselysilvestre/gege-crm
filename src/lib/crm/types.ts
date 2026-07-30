@@ -96,7 +96,7 @@ export type CrmCandidatoRow = {
   ultima_inbound_at: string | null;
   ultima_outbound_at: string | null;
   precisa_resposta: boolean;
-  status_dot: "green" | "amber" | "red" | "gray";
+  status_dot: "green" | "gray";
   resumo_ia: string | null;
   perfil_resumo: string | null;
   analise_completa: string | null;
@@ -110,6 +110,8 @@ export type CrmCandidatoRow = {
   sessao_etapa_funil: string | null;
   sessao_atualizado_em: string | null;
   candidatura_atualizado_em: string | null;
+  /** Primeiro nome de quem marcou Em contato (manual, nesta vaga). */
+  contato_humano_por: string | null;
 };
 
 export type CrmMetrics = {

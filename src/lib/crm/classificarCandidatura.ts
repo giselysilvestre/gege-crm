@@ -33,6 +33,8 @@ export type ClassificarInput = {
 /**
  * Aplica regra de negócio e grava candidaturas.status.
  * Espelha etapa-mãe em whatsapp_sessoes.etapa_funil quando houver sessão.
+ *
+ * Escopo: só a candidatura do `candidaturaId` (atividade de outra vaga não conta).
  */
 export async function classificarCandidatura(
   supabase: SupabaseClient,
