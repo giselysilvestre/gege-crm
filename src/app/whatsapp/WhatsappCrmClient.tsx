@@ -1029,13 +1029,12 @@ export default function WhatsappCrmClient({
   const handleListaItemClick = useCallback(
     (row: CrmCandidatoRow, e: React.MouseEvent) => {
       if (multiselectMode) {
-        e.preventDefault();
-        toggleChecked(row.sessao_id);
+        selectSessao(row.sessao_id, row);
         return;
       }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        if (!multiselectMode) setMultiselectMode(true);
+        setMultiselectMode(true);
         toggleChecked(row.sessao_id);
         selectSessao(row.sessao_id, row);
         return;
@@ -1044,6 +1043,15 @@ export default function WhatsappCrmClient({
       selectSessao(row.sessao_id, row);
     },
     [multiselectMode, toggleChecked, selectSessao]
+  );
+
+  const handleListaItemToggleCheck = useCallback(
+    (sessaoId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleChecked(sessaoId);
+    },
+    [toggleChecked]
   );
 
   async function toggleFavorito(
@@ -1915,11 +1923,12 @@ export default function WhatsappCrmClient({
                     <ListaConversaItem
                       key={c.sessao_id}
                       row={c}
-                      selected={!multiselectMode && selected === c.sessao_id}
+                      selected={selected === c.sessao_id}
                       checked={checkedIds.includes(c.sessao_id)}
                       multiselectMode={multiselectMode}
                       aberta={conversasAbertas.has(c.sessao_id)}
                       onSelect={(e) => handleListaItemClick(c, e)}
+                      onToggleCheck={(e) => handleListaItemToggleCheck(c.sessao_id, e)}
                       onToggleFavorito={(e) =>
                         toggleFavorito(c.sessao_id, c.favorito_crm, e)
                       }
@@ -2766,6 +2775,7 @@ const ListaConversaItem = memo(function ListaConversaItem({
   multiselectMode,
   aberta,
   onSelect,
+  onToggleCheck,
   onToggleFavorito,
 }: {
   row: CrmCandidatoRow;
@@ -2774,6 +2784,7 @@ const ListaConversaItem = memo(function ListaConversaItem({
   multiselectMode: boolean;
   aberta: boolean;
   onSelect: (e: React.MouseEvent) => void;
+  onToggleCheck: (e: React.MouseEvent) => void;
   onToggleFavorito: (e: React.MouseEvent) => void;
 }) {
   const destaque = row.precisa_resposta;
@@ -2788,10 +2799,18 @@ const ListaConversaItem = memo(function ListaConversaItem({
       onClick={onSelect}
     >
       {multiselectMode && (
-        <span
-          className={`lista-check-box${checked ? " is-checked" : ""}`}
-          aria-hidden="true"
-        />
+        <button
+          type="button"
+          className="lista-check-hit"
+          aria-pressed={checked}
+          aria-label={checked ? "Desmarcar candidato" : "Selecionar candidato"}
+          onClick={onToggleCheck}
+        >
+          <span
+            className={`lista-check-box${checked ? " is-checked" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
       )}
       <div className="lista-avatar-wrap">
         <div className={`avatar lista-avatar ${avatarClass(row.candidato_nome)}`}>

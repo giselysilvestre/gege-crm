@@ -21,6 +21,13 @@ Não reintroduzir comportamentos removidos (ex.: pill `Ana`, tag `handoff`, stat
 | Pill **Ana** | Ana é o default; todas as conversas são Ana salvo ação humana explícita. |
 | Tag **handoff** | Removido — não usar pill handoff na lista. |
 
+## Multiselect (seleção em lote)
+
+| Onde clica | O que faz |
+|------------|-----------|
+| **Caixinha** (checkbox) | Marca/desmarca o candidato para ações em lote |
+| **Resto do card** (nome, preview, pills) | Abre a conversa e transita entre mensagens — **não** altera a seleção em lote |
+
 ## Ordenação padrão
 
 **Mais recente** = data da **última mensagem** (`ultima_data`), igual ao horário no canto direito do card.  
