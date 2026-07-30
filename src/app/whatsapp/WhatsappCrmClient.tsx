@@ -232,19 +232,14 @@ const ETAPA_ORDEM: Record<EtapaFunil, number> = {
 
 type SortKey = "score_cv" | "recente" | "score_entrevista" | "etapa";
 
+/** Ordenação “Mais recente” = última mensagem (igual ao horário exibido na lista). */
 function timestampRecente(row: CrmCandidatoRow): number {
-  let max = 0;
-  for (const d of [
-    row.ultima_data,
-    row.sessao_atualizado_em,
-    row.candidatura_atualizado_em,
-    row.sessao_criado_em,
-  ]) {
-    if (!d) continue;
-    const t = Date.parse(d);
-    if (!Number.isNaN(t)) max = Math.max(max, t);
+  if (row.ultima_data) {
+    const t = Date.parse(row.ultima_data);
+    if (!Number.isNaN(t)) return t;
   }
-  return max;
+  const criado = row.sessao_criado_em ? Date.parse(row.sessao_criado_em) : 0;
+  return Number.isNaN(criado) ? 0 : criado;
 }
 
 function cmpScore(

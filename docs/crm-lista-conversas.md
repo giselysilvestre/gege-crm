@@ -21,6 +21,11 @@ Não reintroduzir comportamentos removidos (ex.: pill `Ana`, tag `handoff`, stat
 | Pill **Ana** | Ana é o default; todas as conversas são Ana salvo ação humana explícita. |
 | Tag **handoff** | Removido — não usar pill handoff na lista. |
 
+## Ordenação padrão
+
+**Mais recente** = data da **última mensagem** (`ultima_data`), igual ao horário no canto direito do card.  
+Não usar `candidatura_atualizado_em` (atualização de status no funil) — senão a lista fica “desordenada” em relação à data exibida.
+
 ## Cor de fundo do card
 
 Só **duas** cores:
