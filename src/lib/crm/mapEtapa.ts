@@ -1,5 +1,12 @@
+import {
+  CANDIDATURA_ETAPAS,
+  CANDIDATURA_STATUS_INICIAL,
+  etapaFromStatus,
+  normalizeCandidaturaStatus,
+  type CandidaturaEtapa,
+  type CandidaturaStatus,
+} from "@/lib/candidatura-status";
 import type { EtapaFunil } from "./types";
-import { diasSemResposta } from "./format";
 
 type SessaoLike = {
   etapa_funil: string | null;
@@ -15,88 +22,73 @@ type CandidaturaLike = {
   motivo_reprovacao?: string | null;
 };
 
-type AnaliseLike = {
-  score_pos_entrevista?: number | null;
-};
-
-const ORDEM_AVANCO: EtapaFunil[] = [
-  "abordado",
-  "respondeu",
-  "interessado",
-  "qualificado",
-  "encaminhado",
-  "contratado",
-];
-
+/**
+ * Fonte da verdade: candidaturas.status → etapa-mãe.
+ * Fallback só se candidatura sem status (legado).
+ */
 export function inferirEtapaFunil(
   sessao: SessaoLike,
   candidatura: CandidaturaLike | null,
-  analise: AnaliseLike | null
+  _analise?: { score_pos_entrevista?: number | null } | null
 ): EtapaFunil {
-  if (sessao.etapa_funil && isEtapaFunil(sessao.etapa_funil)) {
-    return sessao.etapa_funil;
-  }
+  const fromCand = etapaFromStatus(candidatura?.status ?? null);
+  if (fromCand) return fromCand;
 
-  if (candidatura?.motivo_reprovacao) return "reprovado";
-  if (candidatura?.status === "contratado") return "contratado";
-  if (sessao.status === "encerrado" && candidatura?.motivo_reprovacao) return "reprovado";
+  const fromSessao = etapaFromStatus(sessao.etapa_funil);
+  if (fromSessao) return fromSessao;
 
-  const dias = diasSemResposta(sessao.ultima_inbound_at, sessao.ultima_outbound_at);
-  const semInbound = !sessao.ultima_inbound_at && !sessao.primeira_resposta_at;
+  // Legado etapa_funil antiga (respondeu, interessado…)
+  const legacy = String(sessao.etapa_funil ?? "").trim();
+  if (legacy === "respondeu" || legacy === "interessado" || legacy === "inativo") return "abordado";
+  if (legacy === "reprovado" || legacy === "desistiu") return "abordado";
 
-  if (semInbound && sessao.ultima_outbound_at && dias >= 3) return "inativo";
-  if (semInbound) return "abordado";
+  if (sessao.ultima_inbound_at || sessao.primeira_resposta_at) return "abordado";
+  if (sessao.ultima_outbound_at) return "abordado";
+  return "inscrito";
+}
 
-  const etapa = sessao.etapa_atual ?? "";
-
-  if (etapa === "agendamento_entrevista") return "encaminhado";
-  if (etapa === "mini_entrevista") {
-    if (analise?.score_pos_entrevista != null) return "qualificado";
-    return "interessado";
-  }
-  if (etapa === "confirma_endereco") return "interessado";
-  if (etapa === "apresentacao_vaga" || etapa === "disparo_template") {
-    return sessao.ultima_inbound_at || sessao.primeira_resposta_at ? "respondeu" : "abordado";
-  }
-  if (etapa === "encerramento") {
-    if (analise?.score_pos_entrevista != null && analise.score_pos_entrevista >= 55) {
-      return "qualificado";
-    }
-    return "reprovado";
-  }
-
-  if (sessao.ultima_inbound_at) return "respondeu";
-  return "abordado";
+export function statusDetalhadoFromCandidatura(
+  candidatura: CandidaturaLike | null
+): CandidaturaStatus | null {
+  return normalizeCandidaturaStatus(candidatura?.status ?? null);
 }
 
 export function proximaEtapaFunil(atual: EtapaFunil): EtapaFunil | null {
-  const i = ORDEM_AVANCO.indexOf(atual);
-  if (i < 0 || i >= ORDEM_AVANCO.length - 1) return null;
-  return ORDEM_AVANCO[i + 1];
+  const i = CANDIDATURA_ETAPAS.indexOf(atual);
+  if (i < 0 || i >= CANDIDATURA_ETAPAS.length - 1) return null;
+  return CANDIDATURA_ETAPAS[i + 1];
 }
 
 export function statusDot(
   etapa: EtapaFunil,
   precisaResp: boolean,
-  diasInativo: number
+  diasInativo: number,
+  statusDetalhado?: CandidaturaStatus | null
 ): "green" | "amber" | "red" | "gray" {
-  if (etapa === "inativo" || diasInativo >= 3) return "red";
+  const s = statusDetalhado ?? null;
+  if (
+    s === "inscrito_reprovado" ||
+    s === "inscrito_falha" ||
+    s === "abordado_reprovado_sem_resposta" ||
+    s === "abordado_negativa" ||
+    s === "qualificado_reprovado_entrevista" ||
+    s === "encaminhado_reprovado"
+  ) {
+    return "red";
+  }
   if (etapa === "contratado" || etapa === "encaminhado") return "green";
-  if (precisaResp || etapa === "respondeu" || etapa === "interessado") return "amber";
-  if (etapa === "abordado") return "gray";
+  if (precisaResp || s === "abordado_em_conversa" || s === "abordado_sem_resposta") return "amber";
+  if (diasInativo >= 3) return "red";
+  if (etapa === "inscrito") return "gray";
   return "green";
 }
 
-function isEtapaFunil(v: string): v is EtapaFunil {
-  return [
-    "abordado",
-    "respondeu",
-    "interessado",
-    "qualificado",
-    "encaminhado",
-    "contratado",
-    "reprovado",
-    "desistiu",
-    "inativo",
-  ].includes(v);
+export function isEtapaFunil(v: string): v is EtapaFunil {
+  return (CANDIDATURA_ETAPAS as readonly string[]).includes(v);
 }
+
+export function defaultStatusDetalhado(): CandidaturaStatus {
+  return CANDIDATURA_STATUS_INICIAL;
+}
+
+export type { CandidaturaEtapa };

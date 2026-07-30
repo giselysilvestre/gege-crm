@@ -11,7 +11,8 @@ import type {
 import { FUNIL_ETAPAS } from "./types";
 import { diasSemResposta, precisaResposta, ultimaAtividadeFromSessao } from "./format";
 import { topExperiencias } from "./experiencia";
-import { inferirEtapaFunil, statusDot } from "./mapEtapa";
+import { inferirEtapaFunil, statusDetalhadoFromCandidatura, statusDot } from "./mapEtapa";
+import { isCandidaturaMorta } from "@/lib/candidatura-status";
 
 function isEtapaFunilDb(v: string): v is EtapaFunil {
   return (FUNIL_ETAPAS as readonly string[]).includes(v);
@@ -417,17 +418,17 @@ export async function fetchCrmRows(
     const vagaIdRow = (candRow?.vaga_id as string | undefined) ?? null;
     const ultima = ultimaAtividadeFromSessao(s.ultima_inbound_at, s.ultima_outbound_at);
 
+    const candLike = candRow
+      ? {
+          status: candRow.status as string,
+          motivo_reprovacao: candRow.motivo_reprovacao as string | null,
+        }
+      : null;
+    const statusDetalhado = statusDetalhadoFromCandidatura(candLike);
     const etapaFunil = inferirEtapaFunil(
       s,
-      candRow
-        ? {
-            status: candRow.status as string,
-            motivo_reprovacao: candRow.motivo_reprovacao as string | null,
-          }
-        : null,
-      analise
-        ? { score_pos_entrevista: analise.score_pos_entrevista as number | null }
-        : null
+      candLike,
+      analise ? { score_pos_entrevista: analise.score_pos_entrevista as number | null } : null
     );
 
     const ultimaDir = ultima.ultima_direcao;
@@ -449,6 +450,7 @@ export async function fetchCrmRows(
       candidato_nome: (cand?.nome as string) ?? "Sem nome",
       telefone: (cand?.telefone as string | null) ?? null,
       etapa_funil: etapaFunil,
+      status_detalhado: statusDetalhado,
       etapa_atual: s.etapa_atual,
       status_sessao: s.status,
       vaga_id: vagaIdRow,
@@ -473,7 +475,7 @@ export async function fetchCrmRows(
       ultima_inbound_at: s.ultima_inbound_at,
       ultima_outbound_at: s.ultima_outbound_at,
       precisa_resposta: precisa,
-      status_dot: statusDot(etapaFunil, precisa, diasInat),
+      status_dot: statusDot(etapaFunil, precisa, diasInat, statusDetalhado),
       resumo_ia: s.resumo_ia,
       perfil_resumo: (analise?.perfil_resumo as string | null) ?? null,
       analise_completa: (analise?.analise_completa as string | null) ?? null,
@@ -500,21 +502,19 @@ export function buildMetrics(rows: CrmCandidatoRow[], todos: number): CrmMetrics
   const abordados = rows.filter(
     (r) =>
       r.ultima_outbound_at ||
-      [
-        "abordado",
-        "respondeu",
-        "interessado",
-        "qualificado",
-        "encaminhado",
-        "contratado",
-        "inativo",
-      ].includes(r.etapa_funil)
+      ["abordado", "qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
   ).length;
-  const responderam = rows.filter((r) =>
-    ["respondeu", "interessado", "qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
+  const responderam = rows.filter(
+    (r) =>
+      r.ultima_inbound_at ||
+      r.status_detalhado === "abordado_em_conversa" ||
+      r.status_detalhado === "abordado_avancar" ||
+      ["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
   ).length;
-  const interessados = rows.filter((r) =>
-    ["interessado", "qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
+  const interessados = rows.filter(
+    (r) =>
+      r.status_detalhado === "abordado_avancar" ||
+      ["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
   ).length;
   const qualificados = rows.filter((r) =>
     ["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
@@ -522,7 +522,7 @@ export function buildMetrics(rows: CrmCandidatoRow[], todos: number): CrmMetrics
   const encaminhados = rows.filter((r) =>
     ["encaminhado", "contratado"].includes(r.etapa_funil)
   ).length;
-  const reprovados = rows.filter((r) => r.etapa_funil === "reprovado").length;
+  const reprovados = rows.filter((r) => isCandidaturaMorta(r.status_detalhado ?? r.candidatura_status)).length;
 
   const pct = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
 

@@ -14,14 +14,19 @@ import {
   preencherMensagemAcao,
   type ModeloMensagemAcao,
 } from "@/lib/crm/mensagens-acao";
-import { proximaEtapaFunil } from "@/lib/crm/mapEtapa";
-import { FUNIL_ETAPAS, type CrmTemplateWhatsapp, type EtapaFunil, type MotivoReprovacao } from "@/lib/crm/types";
+import { isEtapaFunil } from "@/lib/crm/mapEtapa";
+import { classificarCandidatura } from "@/lib/crm/classificarCandidatura";
+import type { CrmTemplateWhatsapp, EtapaFunil, MotivoReprovacao } from "@/lib/crm/types";
 import type { CandidaturaStatus } from "@/lib/candidatura-status";
 import {
   CANDIDATURA_STATUS_DESISTENCIA,
   CANDIDATURA_STATUS_ENCAMINHADO_AGUARDANDO,
   CANDIDATURA_STATUS_INICIAL,
+  CANDIDATURA_STATUSES,
+  STATUS_ENTRADA_POR_ETAPA,
+  etapaFromStatus,
   nextCandidaturaStatus,
+  normalizeCandidaturaStatus,
   reprovadoStatusForEtapa,
 } from "@/lib/candidatura-status";
 
@@ -215,25 +220,26 @@ async function executarReprovar(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   sessaoId: string,
   sessao: SessaoRow,
-  cand: CandRow | null,
+  _cand: CandRow | null,
   motivo: MotivoReprovacao
 ) {
-  if (sessao.candidatura_id) {
-    const statusAtual = await loadCandidaturaStatus(supabase, sessao.candidatura_id);
-    const reprovado = reprovadoStatusForEtapa(statusAtual);
-    if (!reprovado) throw new Error("Não é possível reprovar nesta etapa");
-    await supabase
-      .from("candidaturas")
-      .update({
-        motivo_reprovacao: motivo,
-        status: reprovado,
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq("id", sessao.candidatura_id);
-  }
+  if (!sessao.candidatura_id) throw new Error("Sessão sem candidatura — status não pode ser salvo");
+  const statusAtual = await loadCandidaturaStatus(supabase, sessao.candidatura_id);
+  const reprovado = reprovadoStatusForEtapa(statusAtual);
+  if (!reprovado) throw new Error("Não é possível reprovar nesta etapa");
+  const now = new Date().toISOString();
+  await supabase
+    .from("candidaturas")
+    .update({
+      motivo_reprovacao: motivo,
+      status: reprovado,
+      atualizado_em: now,
+    })
+    .eq("id", sessao.candidatura_id);
+  const etapa = etapaFromStatus(reprovado) ?? "abordado";
   await supabase
     .from("whatsapp_sessoes")
-    .update({ etapa_funil: "reprovado", status: "encerrado" })
+    .update({ etapa_funil: etapa, status: "encerrado", atualizado_em: now })
     .eq("id", sessaoId);
 }
 
@@ -282,27 +288,18 @@ async function executarAvancar(
   sessaoId: string,
   sessao: SessaoRow
 ) {
-  const atual = (sessao.etapa_funil as EtapaFunil | null) ?? "abordado";
-  const prox = proximaEtapaFunil(atual);
-  if (!prox) {
-    throw new Error("Não há próxima etapa");
-  }
-  const now = new Date().toISOString();
-  await supabase
-    .from("whatsapp_sessoes")
-    .update({ etapa_funil: prox, atualizado_em: now })
-    .eq("id", sessaoId);
+  if (!sessao.candidatura_id) throw new Error("Sessão sem candidatura — status não pode ser salvo");
+  const statusAtual = await loadCandidaturaStatus(supabase, sessao.candidatura_id);
+  const proxStatus = nextCandidaturaStatus(statusAtual);
+  if (!proxStatus) throw new Error("Não há próxima etapa");
 
-  if (sessao.candidatura_id) {
-    const statusAtual = await loadCandidaturaStatus(supabase, sessao.candidatura_id);
-    const proxStatus = nextCandidaturaStatus(statusAtual);
-    if (!proxStatus) throw new Error("Não há próxima etapa");
-    await supabase
-      .from("candidaturas")
-      .update({ status: proxStatus, atualizado_em: new Date().toISOString() })
-      .eq("id", sessao.candidatura_id);
-  }
+  await classificarCandidatura(supabase, {
+    candidaturaId: sessao.candidatura_id,
+    evento: "manual",
+    statusManual: proxStatus,
+  });
 
+  const prox = etapaFromStatus(proxStatus) ?? "abordado";
   if (prox === "encaminhado") {
     const dedupeKey = `entrevista_marcada:${sessaoId}`;
     await supabase.from("whatsapp_alertas").upsert(
@@ -324,19 +321,11 @@ async function executarAvancar(
 }
 
 function isEtapaFunilDb(v: string): v is EtapaFunil {
-  return (FUNIL_ETAPAS as readonly string[]).includes(v);
+  return isEtapaFunil(v);
 }
 
-function candidaturaStatusForEtapaFunil(etapa: EtapaFunil): CandidaturaStatus | null {
-  const map: Partial<Record<EtapaFunil, CandidaturaStatus>> = {
-    abordado: "abordado_em_conversa",
-    respondeu: "abordado_em_conversa",
-    interessado: "abordado_avancar",
-    qualificado: "qualificado_avancar",
-    encaminhado: CANDIDATURA_STATUS_ENCAMINHADO_AGUARDANDO,
-    contratado: "contratado",
-  };
-  return map[etapa] ?? null;
+function isStatusDetalhado(v: string): v is CandidaturaStatus {
+  return (CANDIDATURA_STATUSES as readonly string[]).includes(v);
 }
 
 async function executarMoverEtapaFunil(
@@ -344,56 +333,40 @@ async function executarMoverEtapaFunil(
   sessaoId: string,
   sessao: SessaoRow,
   cand: CandRow | null,
-  destino: EtapaFunil
+  destino: EtapaFunil,
+  statusDetalhado?: CandidaturaStatus | null
 ): Promise<EtapaFunil> {
-  const atual = (sessao.etapa_funil as EtapaFunil | null) ?? "abordado";
-  if (atual === destino) return destino;
+  if (!sessao.candidatura_id) throw new Error("Sessão sem candidatura — status não pode ser salvo");
 
-  if (destino === "reprovado") {
-    await executarReprovar(supabase, sessaoId, sessao, cand, "eliminatorio");
-    return "reprovado";
-  }
-
-  if (destino === "desistiu") {
-    await supabase
-      .from("whatsapp_sessoes")
-      .update({ etapa_funil: "desistiu", status: "encerrado", atualizado_em: new Date().toISOString() })
-      .eq("id", sessaoId);
-    if (sessao.candidatura_id) {
-      await supabase
-        .from("candidaturas")
-        .update({
-          motivo_reprovacao: "desistiu",
-          status: CANDIDATURA_STATUS_DESISTENCIA,
-          atualizado_em: new Date().toISOString(),
-        })
-        .eq("id", sessao.candidatura_id);
-    }
-    return "desistiu";
-  }
-
-  if (destino === "encaminhado") {
+  if (destino === "encaminhado" && !statusDetalhado) {
     await executarEncaminhar(supabase, sessaoId, sessao);
     return "encaminhado";
   }
 
-  const now = new Date().toISOString();
-  const statusSessao =
-    destino === "inativo" || destino === "contratado" ? "encerrado" : "ativo";
+  const statusCand =
+    statusDetalhado && isStatusDetalhado(statusDetalhado)
+      ? statusDetalhado
+      : STATUS_ENTRADA_POR_ETAPA[destino];
 
+  await classificarCandidatura(supabase, {
+    candidaturaId: sessao.candidatura_id,
+    evento: "manual",
+    statusManual: statusCand,
+  });
+
+  const now = new Date().toISOString();
+  const statusSessao = destino === "contratado" ? "encerrado" : "ativo";
   await supabase
     .from("whatsapp_sessoes")
     .update({ etapa_funil: destino, status: statusSessao, atualizado_em: now })
     .eq("id", sessaoId);
 
-  if (sessao.candidatura_id) {
-    const statusCand = candidaturaStatusForEtapaFunil(destino);
-    if (statusCand) {
-      await supabase
-        .from("candidaturas")
-        .update({ status: statusCand, atualizado_em: now })
-        .eq("id", sessao.candidatura_id);
-    }
+  if (statusCand === CANDIDATURA_STATUS_DESISTENCIA) {
+    await supabase
+      .from("candidaturas")
+      .update({ motivo_reprovacao: "desistiu", atualizado_em: now })
+      .eq("id", sessao.candidatura_id);
+    void cand;
   }
 
   return destino;
@@ -518,7 +491,7 @@ async function executarMoverVaga(
     .from("whatsapp_sessoes")
     .update({
       candidatura_id: candidaturaDestinoId,
-      etapa_funil: "abordado",
+      etapa_funil: "inscrito",
       status: "ativo",
       atualizado_em: new Date().toISOString(),
     })
@@ -824,31 +797,36 @@ export async function POST(request: Request) {
         );
         aviso = r.aviso;
       }
-      return NextResponse.json({ ok: true, etapa_funil: "reprovado", aviso });
+      return NextResponse.json({ ok: true, etapa_funil: "abordado", aviso });
     }
 
     if (action === "desistir") {
       const enviarMensagem = parseEnviarMensagem(body.enviarMensagem);
+      if (!sessao.candidatura_id) {
+        return NextResponse.json({ error: "Sessão sem candidatura" }, { status: 400 });
+      }
+      await classificarCandidatura(supabase, {
+        candidaturaId: sessao.candidatura_id,
+        evento: "manual",
+        statusManual: CANDIDATURA_STATUS_DESISTENCIA,
+      });
+      await supabase
+        .from("candidaturas")
+        .update({
+          motivo_reprovacao: "desistiu",
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", sessao.candidatura_id);
       await supabase
         .from("whatsapp_sessoes")
-        .update({ etapa_funil: "desistiu", status: "encerrado" })
+        .update({ etapa_funil: "abordado", status: "encerrado" })
         .eq("id", sessaoId);
-      if (sessao.candidatura_id) {
-        await supabase
-          .from("candidaturas")
-          .update({
-            motivo_reprovacao: "desistiu",
-            status: CANDIDATURA_STATUS_DESISTENCIA,
-            atualizado_em: new Date().toISOString(),
-          })
-          .eq("id", sessao.candidatura_id);
-      }
       let aviso: string | undefined;
       if (enviarMensagem) {
         const r = await enviarMensagemModelo(supabase, sessaoId, sessao, cand, "desistencia");
         aviso = r.aviso;
       }
-      return NextResponse.json({ ok: true, etapa_funil: "desistiu", aviso });
+      return NextResponse.json({ ok: true, etapa_funil: "abordado", aviso });
     }
 
     if (action === "reativar") {
@@ -933,17 +911,30 @@ export async function POST(request: Request) {
 
     if (action === "mover_etapa") {
       const etapaDestino = String(body.etapaDestino ?? "").trim();
-      if (!isEtapaFunilDb(etapaDestino)) {
+      const statusRaw = String(body.statusDetalhado ?? "").trim();
+      // Aceita drop por etapa-mãe OU status detalhado direto
+      let etapa: EtapaFunil;
+      let statusDet: CandidaturaStatus | null = null;
+      if (isStatusDetalhado(statusRaw)) {
+        statusDet = statusRaw;
+        etapa = etapaFromStatus(statusRaw) ?? "abordado";
+      } else if (isEtapaFunilDb(etapaDestino)) {
+        etapa = etapaDestino;
+      } else if (normalizeCandidaturaStatus(etapaDestino)) {
+        statusDet = normalizeCandidaturaStatus(etapaDestino);
+        etapa = etapaFromStatus(statusDet) ?? "abordado";
+      } else {
         return NextResponse.json({ error: "etapaDestino inválida" }, { status: 400 });
       }
-      const etapa = await executarMoverEtapaFunil(
+      const result = await executarMoverEtapaFunil(
         supabase,
         sessaoId,
         sessao,
         cand,
-        etapaDestino
+        etapa,
+        statusDet
       );
-      return NextResponse.json({ ok: true, etapa_funil: etapa });
+      return NextResponse.json({ ok: true, etapa_funil: result, status_detalhado: statusDet });
     }
 
     if (action === "mover_vaga") {

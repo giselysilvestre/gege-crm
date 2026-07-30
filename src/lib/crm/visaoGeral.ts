@@ -1,6 +1,7 @@
 import type { CrmCandidatoRow, CrmDashboard, CrmMetrics, EtapaFunil } from "./types";
 import { ETAPA_LABELS, FUNIL_PRINCIPAL } from "./types";
 import { JANELA_WHATSAPP_MS } from "./format";
+import { isCandidaturaMorta } from "@/lib/candidatura-status";
 
 export type MetricasDia = {
   conversas_ativas: number;
@@ -47,8 +48,7 @@ export type VisaoGeralModel = {
   prontos_cliente: CandidatoProntoCliente[];
 };
 
-
-const ETAPAS_FORA_PIPELINE = new Set<EtapaFunil>(["reprovado", "desistiu", "contratado", "inativo"]);
+const ETAPAS_FORA_PIPELINE = new Set<EtapaFunil>(["contratado"]);
 
 function pct(n: number, base: number) {
   return base > 0 ? Math.round((n / base) * 1000) / 10 : 0;
@@ -65,10 +65,10 @@ function isSameLocalDay(iso: string | null | undefined): boolean {
   );
 }
 
-/** Sessão no funil com mensagem nos últimos 24h (entrada ou saída). */
 function isConversaAtiva(row: CrmCandidatoRow, agora = Date.now()): boolean {
   if (row.status_sessao !== "ativo") return false;
   if (ETAPAS_FORA_PIPELINE.has(row.etapa_funil)) return false;
+  if (isCandidaturaMorta(row.status_detalhado ?? row.candidatura_status)) return false;
   if (!row.ultima_data) return false;
   const t = Date.parse(row.ultima_data);
   if (Number.isNaN(t)) return false;
@@ -79,56 +79,45 @@ function isAbordadoHoje(row: CrmCandidatoRow): boolean {
   return isSameLocalDay(row.sessao_criado_em) || isSameLocalDay(row.ultima_outbound_at);
 }
 
-/** Só encaminhamento explícito no CRM hoje — não inferido por etapa_atual. */
 function isEncaminhadoHoje(row: CrmCandidatoRow): boolean {
-  if (row.sessao_etapa_funil !== "encaminhado") return false;
+  if (row.sessao_etapa_funil !== "encaminhado" && row.etapa_funil !== "encaminhado") return false;
   return (
     isSameLocalDay(row.sessao_atualizado_em) || isSameLocalDay(row.candidatura_atualizado_em)
   );
 }
 
-const ETAPAS_COM_RESPOSTA: EtapaFunil[] = [
-  "respondeu",
-  "interessado",
-  "qualificado",
-  "encaminhado",
-  "contratado",
-];
-const ETAPAS_INTERESSADO: EtapaFunil[] = ["interessado", "qualificado", "encaminhado", "contratado"];
-const ETAPAS_QUALIFICADO: EtapaFunil[] = ["qualificado", "encaminhado", "contratado"];
-const ETAPAS_ENCAMINHADO: EtapaFunil[] = ["encaminhado", "contratado"];
-const ETAPAS_ABORDADO_ETAPA: EtapaFunil[] = [
-  "abordado",
-  "respondeu",
-  "interessado",
-  "qualificado",
-  "encaminhado",
-  "contratado",
-  "inativo",
-];
-
 function isAbordado(row: CrmCandidatoRow): boolean {
-  return Boolean(row.ultima_outbound_at) || ETAPAS_ABORDADO_ETAPA.includes(row.etapa_funil);
+  return (
+    Boolean(row.ultima_outbound_at) ||
+    ["abordado", "qualificado", "encaminhado", "contratado"].includes(row.etapa_funil)
+  );
 }
 
-function countComEtapa(rows: CrmCandidatoRow[], etapas: EtapaFunil[]): number {
-  return rows.filter((r) => etapas.includes(r.etapa_funil)).length;
+function isRespondido(row: CrmCandidatoRow): boolean {
+  return (
+    Boolean(row.ultima_inbound_at) ||
+    row.status_detalhado === "abordado_em_conversa" ||
+    row.status_detalhado === "abordado_avancar" ||
+    ["qualificado", "encaminhado", "contratado"].includes(row.etapa_funil)
+  );
 }
 
 function countFunilEtapa(rows: CrmCandidatoRow[], etapa: EtapaFunil): number {
   switch (etapa) {
+    case "inscrito":
+      return rows.filter((r) => r.etapa_funil === "inscrito").length;
     case "abordado":
-      return rows.filter(isAbordado).length;
-    case "respondeu":
-      return countComEtapa(rows, ETAPAS_COM_RESPOSTA);
-    case "interessado":
-      return countComEtapa(rows, ETAPAS_INTERESSADO);
+      return rows.filter((r) => r.etapa_funil === "abordado" || isAbordado(r)).filter(
+        (r) => !["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
+      ).length;
     case "qualificado":
-      return countComEtapa(rows, ETAPAS_QUALIFICADO);
+      return rows.filter((r) =>
+        ["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
+      ).length;
     case "encaminhado":
-      return countComEtapa(rows, ETAPAS_ENCAMINHADO);
+      return rows.filter((r) => ["encaminhado", "contratado"].includes(r.etapa_funil)).length;
     case "contratado":
-      return countComEtapa(rows, ["contratado"]);
+      return rows.filter((r) => r.etapa_funil === "contratado").length;
     default:
       return 0;
   }
@@ -142,16 +131,16 @@ export function buildVisaoGeralModel(
   const ativas = rows.filter(isConversaAtiva);
   const abordadosHoje = rows.filter(isAbordadoHoje);
   const qualificadosDia = abordadosHoje.filter((r) =>
-    ETAPAS_QUALIFICADO.includes(r.etapa_funil)
+    ["qualificado", "encaminhado", "contratado"].includes(r.etapa_funil)
   ).length;
-  const respondidosAbordadosHoje = abordadosHoje.filter((r) =>
-    ETAPAS_COM_RESPOSTA.includes(r.etapa_funil)
-  ).length;
+  const respondidosAbordadosHoje = abordadosHoje.filter(isRespondido).length;
 
   const abordadosPeriodo = rows.filter(isAbordado).length;
-  const respondidosPeriodo = countComEtapa(rows, ETAPAS_COM_RESPOSTA);
-  const encaminhadosPeriodo = countComEtapa(rows, ETAPAS_ENCAMINHADO);
-  const contratadosPeriodo = countComEtapa(rows, ["contratado"]);
+  const respondidosPeriodo = rows.filter(isRespondido).length;
+  const encaminhadosPeriodo = rows.filter((r) =>
+    ["encaminhado", "contratado"].includes(r.etapa_funil)
+  ).length;
+  const contratadosPeriodo = rows.filter((r) => r.etapa_funil === "contratado").length;
 
   const funilCounts = FUNIL_PRINCIPAL.map((etapa) => ({
     etapa,
@@ -173,7 +162,8 @@ export function buildVisaoGeralModel(
     .filter(
       (r) =>
         r.status_sessao === "ativo" &&
-        (r.etapa_funil === "interessado" || r.etapa_funil === "qualificado")
+        (r.status_detalhado === "abordado_avancar" || r.etapa_funil === "qualificado") &&
+        !isCandidaturaMorta(r.status_detalhado)
     )
     .sort((a, b) => {
       const rank = (e: EtapaFunil) => (e === "qualificado" ? 0 : 1);
@@ -187,7 +177,9 @@ export function buildVisaoGeralModel(
       nome: r.candidato_nome,
       vaga_nome: r.vaga_nome,
       etapa_funil: r.etapa_funil,
-      etapa_label: ETAPA_LABELS[r.etapa_funil],
+      etapa_label: r.status_detalhado
+        ? String(r.status_detalhado)
+        : ETAPA_LABELS[r.etapa_funil],
       score_cv: r.score_cv,
       score_entrevista: r.score_entrevista,
       tags: r.tags,

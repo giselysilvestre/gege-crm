@@ -1,53 +1,36 @@
+import {
+  CANDIDATURA_ETAPA_LABELS,
+  CANDIDATURA_ETAPAS,
+  CANDIDATURA_STATUS_LABELS,
+  CANDIDATURA_STATUSES,
+  type CandidaturaEtapa,
+  type CandidaturaStatus,
+} from "@/lib/candidatura-status";
+
 export type CrmViewId = "kanban" | "conversas" | "funil" | "alertas";
 
-export const FUNIL_ETAPAS = [
-  "abordado",
-  "respondeu",
-  "interessado",
-  "qualificado",
-  "encaminhado",
-  "contratado",
-  "reprovado",
-  "desistiu",
-  "inativo",
-] as const;
+/** Etapas-mãe (Kanban / filtro simples). */
+export const FUNIL_ETAPAS = CANDIDATURA_ETAPAS;
+export type EtapaFunil = CandidaturaEtapa;
 
-export type EtapaFunil = (typeof FUNIL_ETAPAS)[number];
+export const FUNIL_PRINCIPAL: EtapaFunil[] = [...CANDIDATURA_ETAPAS];
 
-export const FUNIL_PRINCIPAL: EtapaFunil[] = [
-  "abordado",
-  "respondeu",
-  "interessado",
-  "qualificado",
-  "encaminhado",
-  "contratado",
-];
+/** Sem colunas laterais de saída — mortos ficam na etapa-mãe. */
+export const FUNIL_SAIDAS: EtapaFunil[] = [];
 
-export const FUNIL_SAIDAS: EtapaFunil[] = ["reprovado", "desistiu", "inativo"];
-
-export const ETAPA_LABELS: Record<EtapaFunil, string> = {
-  abordado: "Abordado",
-  respondeu: "Respondeu",
-  interessado: "Interessado",
-  qualificado: "Qualificado",
-  encaminhado: "Encaminhado",
-  contratado: "Contratado",
-  reprovado: "Reprovado",
-  desistiu: "Desistiu",
-  inativo: "Inativo",
-};
+export const ETAPA_LABELS: Record<EtapaFunil, string> = { ...CANDIDATURA_ETAPA_LABELS };
 
 export const ETAPA_BADGE_CLASS: Record<EtapaFunil, string> = {
-  abordado: "badge-gray",
-  respondeu: "badge-blue",
-  interessado: "badge-amber",
+  inscrito: "badge-gray",
+  abordado: "badge-blue",
   qualificado: "badge-purple",
   encaminhado: "badge-teal",
   contratado: "badge-green",
-  reprovado: "badge-red",
-  desistiu: "badge-red",
-  inativo: "badge-red",
 };
+
+export const STATUS_DETALHADO_LIST = CANDIDATURA_STATUSES;
+export type StatusDetalhado = CandidaturaStatus;
+export const STATUS_DETALHADO_LABELS = CANDIDATURA_STATUS_LABELS;
 
 export const MOTIVOS_REPROVACAO = [
   { value: "score_entrevista", label: "Score entrevista" },
@@ -89,7 +72,10 @@ export type CrmCandidatoRow = {
   candidatura_id: string | null;
   candidato_nome: string;
   telefone: string | null;
+  /** Etapa-mãe derivada de candidaturas.status. */
   etapa_funil: EtapaFunil;
+  /** Status detalhado canônico (fonte da verdade). */
+  status_detalhado: CandidaturaStatus | null;
   etapa_atual: string | null;
   status_sessao: string | null;
   vaga_id: string | null;
@@ -121,8 +107,7 @@ export type CrmCandidatoRow = {
   candidatura_status: string | null;
   favorito_crm: boolean;
   sessao_criado_em: string | null;
-  /** Valor gravado em whatsapp_sessoes.etapa_funil (sem inferência por etapa_atual). */
-  sessao_etapa_funil: EtapaFunil | null;
+  sessao_etapa_funil: string | null;
   sessao_atualizado_em: string | null;
   candidatura_atualizado_em: string | null;
 };

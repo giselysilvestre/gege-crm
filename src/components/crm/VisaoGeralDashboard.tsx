@@ -8,9 +8,8 @@ import type { CrmCandidatoRow, CrmDashboard, CrmMetrics } from "@/lib/crm/types"
 const AGENDA_VISIBLE = 4;
 
 const FUNNEL_FILL_CLASS: Record<string, string> = {
-  abordado: "fill-abordado",
-  respondeu: "fill-respondeu",
-  interessado: "fill-interessado",
+  inscrito: "fill-abordado",
+  abordado: "fill-respondeu",
   qualificado: "fill-qualificado",
   encaminhado: "fill-encaminhado",
   contratado: "fill-contratado",

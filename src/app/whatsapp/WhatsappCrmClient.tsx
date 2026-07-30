@@ -24,6 +24,7 @@ import {
   FUNIL_PRINCIPAL,
   FUNIL_SAIDAS,
   MOTIVOS_REPROVACAO,
+  STATUS_DETALHADO_LABELS,
 } from "@/lib/crm/types";
 import {
   avatarClass,
@@ -232,15 +233,11 @@ function IconMoon() {
 }
 
 const ETAPA_ORDEM: Record<EtapaFunil, number> = {
-  abordado: 0,
-  respondeu: 1,
-  interessado: 2,
-  qualificado: 3,
-  encaminhado: 4,
-  contratado: 5,
-  reprovado: 6,
-  desistiu: 7,
-  inativo: 8,
+  inscrito: 0,
+  abordado: 1,
+  qualificado: 2,
+  encaminhado: 3,
+  contratado: 4,
 };
 
 type SortKey = "score_cv" | "recente" | "score_entrevista" | "etapa";
@@ -1300,7 +1297,10 @@ export default function WhatsappCrmClient({
   const agenteAtivo =
     Boolean(selecionada) &&
     selecionada!.status_sessao !== "encerrado" &&
-    !["reprovado", "desistiu", "contratado", "inativo"].includes(selecionada!.etapa_funil);
+    selecionada!.etapa_funil !== "contratado" &&
+    !["inscrito_reprovado", "inscrito_falha", "abordado_reprovado_sem_resposta", "abordado_negativa", "qualificado_reprovado_entrevista", "encaminhado_reprovado"].includes(
+      selecionada!.status_detalhado ?? ""
+    );
 
   const classificacaoChat = selecionada
     ? [
@@ -1849,7 +1849,10 @@ export default function WhatsappCrmClient({
                       <span
                         className={`lista-status-pill etapa-tag ${listaStatusClass(selecionada.etapa_funil)}`}
                       >
-                        {ETAPA_LABELS[selecionada.etapa_funil]}
+                        {selecionada.status_detalhado
+                          ? STATUS_DETALHADO_LABELS[selecionada.status_detalhado] ??
+                            ETAPA_LABELS[selecionada.etapa_funil]
+                          : ETAPA_LABELS[selecionada.etapa_funil]}
                       </span>
                       {selecionada.curriculo_url && (
                         <a
@@ -2683,7 +2686,11 @@ const ListaConversaItem = memo(function ListaConversaItem({
 }) {
   const destaque = row.precisa_resposta;
   const preview = previewListaMsg(row);
-  const etapaLabel = ETAPA_LABELS[row.etapa_funil].toLowerCase();
+  const etapaLabel = (
+    row.status_detalhado
+      ? STATUS_DETALHADO_LABELS[row.status_detalhado] ?? ETAPA_LABELS[row.etapa_funil]
+      : ETAPA_LABELS[row.etapa_funil]
+  ).toLowerCase();
   const nova = !aberta;
 
   return (
