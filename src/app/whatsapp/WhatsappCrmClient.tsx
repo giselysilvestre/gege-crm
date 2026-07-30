@@ -52,10 +52,11 @@ import { readJsonResponse } from "@/lib/parseJsonResponse";
 
 type ApiErrorJson = { error?: string };
 type AcaoResponseJson = ApiErrorJson & {
-  ok?: number;
+  ok?: number | boolean;
   erros?: unknown[];
   aviso?: string;
   vaga_nome?: string;
+  contato_humano_por?: string | null;
 };
 type MessagesResponseJson = ApiErrorJson & { mensagens?: WhatsappMessage[] };
 type ConfigResponseJson = { manualSendEnabled?: boolean };
@@ -1103,7 +1104,20 @@ export default function WhatsappCrmClient({
       });
       const json = await readJsonResponse<AcaoResponseJson>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro na ação em lote");
-      const ok = json.ok ?? checkedIds.length;
+      if (action === "em_contato_lote" && "contato_humano_por" in json) {
+        const nome = json.contato_humano_por ?? null;
+        const patchRows = (list: CrmCandidatoRow[]) =>
+          list.map((r) =>
+            checkedIds.includes(r.sessao_id) ? { ...r, contato_humano_por: nome } : r
+          );
+        setRows((prev) => patchRows(prev));
+        const key = crmCacheKey(clienteId, vagaId);
+        const cached = crmCache.current.get(key);
+        if (cached) {
+          crmCache.current.set(key, { ...cached, rows: patchRows(cached.rows) });
+        }
+      }
+      const ok = typeof json.ok === "number" ? json.ok : checkedIds.length;
       const erros = json.erros?.length ?? 0;
       setActionMsg(
         erros > 0
@@ -1244,10 +1258,26 @@ export default function WhatsappCrmClient({
       setActionMsg(json.error ?? "Erro na ação");
       return;
     }
-    setActionMsg(json.aviso ?? "Ok");
+    if (action === "em_contato") {
+      const nome = json.contato_humano_por ?? null;
+      const patchRows = (list: CrmCandidatoRow[]) =>
+        list.map((r) => (r.sessao_id === sid ? { ...r, contato_humano_por: nome } : r));
+      setRows((prev) => patchRows(prev));
+      const key = crmCacheKey(clienteId, vagaId);
+      const cached = crmCache.current.get(key);
+      if (cached) {
+        crmCache.current.set(key, { ...cached, rows: patchRows(cached.rows) });
+      }
+      if (pinnedRowRef.current?.sessao_id === sid) {
+        pinnedRowRef.current = { ...pinnedRowRef.current, contato_humano_por: nome };
+      }
+      setActionMsg(nome ? `Em contato — ${nome}` : "Em contato removido");
+    } else {
+      setActionMsg(json.aviso ?? "Ok");
+    }
     setModal(null);
     messagesCache.current.delete(sid);
-    await loadCrm();
+    await loadCrm({ force: true });
     if (selected === sid || sessaoIdOverride) await loadMessages(sid, { force: true });
   }
 
