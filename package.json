@@ -6,9 +6,10 @@
     "clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\"",
     "dev": "npm run clean && next dev -p 3010",
     "dev:clean": "npm run clean && next dev -p 3010",
-    "dev:fast": "next dev -p 3010",
+    "dev:fast": "npm run clean && next dev -p 3010",
     "build": "next build",
-    "start": "next start -p 3010"
+    "start": "next start -p 3010",
+    "serve": "npm run clean && npm run build && npm run start"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

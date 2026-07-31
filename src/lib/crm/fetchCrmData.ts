@@ -340,9 +340,11 @@ export async function fetchCrmRows(
   supabase: SupabaseClient,
   vagaId: string | null,
   clienteId: string | null = null,
-  opts?: { skipPreview?: boolean }
+  opts?: { skipPreview?: boolean; lite?: boolean }
 ): Promise<CrmCandidatoRow[]> {
   const skipPreview = opts?.skipPreview !== false;
+  /** lite: pula experiências CV em lote (carrega só ao abrir 1 conversa). */
+  const lite = opts?.lite !== false;
   let sessoes: SessaoRow[];
   let candidaturaIds: string[];
 
@@ -375,11 +377,21 @@ export async function fetchCrmRows(
 
   const candidaturaById = await fetchCandidaturasByIds(supabase, candidaturaIds);
 
+  const vagaIdsNeeded = new Set<string>();
+  for (const row of candidaturaById.values()) {
+    const vid = row.vaga_id as string | undefined;
+    if (vid) vagaIdsNeeded.add(vid);
+  }
+
   const candidatoIds = Array.from(
     new Set(sessoes.map((s) => s.candidato_id).filter(Boolean))
   ) as string[];
 
-  const [candidatos, analises, experienciasRaw, { data: vagas }] = await Promise.all([
+  const analiseSelect = lite
+    ? "candidato_id,score_ia,score_pos_entrevista,tags,disponibilidade_horario"
+    : "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo";
+
+  const [candidatos, analises, experienciasRaw, vagasRows] = await Promise.all([
     candidatoIds.length
       ? fetchRowsByIds<Record<string, unknown>>(
           supabase,
@@ -393,12 +405,12 @@ export async function fetchCrmRows(
       ? fetchRowsByIds<Record<string, unknown>>(
           supabase,
           "candidatos_analise",
-          "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo",
+          analiseSelect,
           "candidato_id",
           candidatoIds
         )
       : Promise.resolve([]),
-    candidatoIds.length
+    !lite && candidatoIds.length
       ? fetchRowsByIds<Record<string, unknown>>(
           supabase,
           "candidatos_experiencia",
@@ -407,7 +419,15 @@ export async function fetchCrmRows(
           candidatoIds
         )
       : Promise.resolve([]),
-    supabase.from("vagas").select("id,cargo,titulo_publicacao"),
+    vagaIdsNeeded.size
+      ? fetchRowsByIds<Record<string, unknown>>(
+          supabase,
+          "vagas",
+          "id,cargo,titulo_publicacao",
+          "id",
+          [...vagaIdsNeeded]
+        )
+      : Promise.resolve([]),
   ]);
 
   const candidatoById = new Map(candidatos.map((c) => [c.id as string, c]));
@@ -428,7 +448,7 @@ export async function fetchCrmRows(
     experienciasByCandidato.set(candidatoId, list);
   }
   const vagasMap = new Map(
-    (vagas ?? []).map((v) => [
+    vagasRows.map((v) => [
       v.id as string,
       (v.titulo_publicacao as string) || (v.cargo as string) || "Vaga",
     ])
@@ -518,11 +538,12 @@ export async function fetchCrmRows(
       precisa_resposta: precisa,
       status_dot: dentroJanela24h(s.ultima_inbound_at) ? "green" : "gray",
       resumo_ia: s.resumo_ia,
-      perfil_resumo: (analise?.perfil_resumo as string | null) ?? null,
+      perfil_resumo: lite ? null : ((analise?.perfil_resumo as string | null) ?? null),
       analise_completa: null,
-      experiencias_cv: s.candidato_id
-        ? topExperiencias(experienciasByCandidato.get(s.candidato_id) ?? [])
-        : [],
+      experiencias_cv:
+        !lite && s.candidato_id
+          ? topExperiencias(experienciasByCandidato.get(s.candidato_id) ?? [])
+          : [],
       curriculo_url: (cand?.curriculo_url as string | null) ?? null,
       reativacao_enviada: Boolean(s.reativacao_enviada),
       motivo_reprovacao: (candRow?.motivo_reprovacao as string | null) ?? null,
@@ -538,6 +559,54 @@ export async function fetchCrmRows(
   }
 
   return rows;
+}
+
+/** Análise + experiências de UM candidato (ao abrir conversa — evita buscar milhares na lista). */
+export async function fetchCandidatoExtras(
+  supabase: SupabaseClient,
+  sessaoId: string
+): Promise<Partial<CrmCandidatoRow> | null> {
+  const { data: sessao, error: sessaoErr } = await supabase
+    .from("whatsapp_sessoes")
+    .select("candidato_id")
+    .eq("id", sessaoId)
+    .maybeSingle();
+  if (sessaoErr) throw sessaoErr;
+  if (!sessao?.candidato_id) return null;
+
+  const candidatoId = sessao.candidato_id as string;
+  const [analiseRes, expsRes] = await Promise.all([
+    supabase
+      .from("candidatos_analise")
+      .select("analise_completa,perfil_resumo")
+      .eq("candidato_id", candidatoId)
+      .maybeSingle(),
+    supabase
+      .from("candidatos_experiencia")
+      .select("empresa,cargo,data_inicio,data_fim,meses")
+      .eq("candidato_id", candidatoId),
+  ]);
+  if (analiseRes.error) throw analiseRes.error;
+  if (expsRes.error) throw expsRes.error;
+
+  const experiencias: CandidatoExperiencia[] = [];
+  for (const row of expsRes.data ?? []) {
+    const empresa = String(row.empresa ?? "").trim();
+    if (!empresa) continue;
+    experiencias.push({
+      empresa,
+      cargo: (row.cargo as string | null) ?? null,
+      data_inicio: (row.data_inicio as string | null) ?? null,
+      data_fim: (row.data_fim as string | null) ?? null,
+      meses: row.meses != null ? Number(row.meses) : null,
+    });
+  }
+
+  return {
+    analise_completa: (analiseRes.data?.analise_completa as string | null) ?? null,
+    perfil_resumo: (analiseRes.data?.perfil_resumo as string | null) ?? null,
+    experiencias_cv: topExperiencias(experiencias),
+  };
 }
 
 export function buildMetrics(rows: CrmCandidatoRow[], todos: number): CrmMetrics {

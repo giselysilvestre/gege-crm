@@ -5,6 +5,7 @@ import {
   buildMetrics,
   countCandidaturas,
   enrichDashboardActivity,
+  fetchCandidatoExtras,
   fetchCrmRows,
   fetchMessages,
   fetchVagas,
@@ -26,25 +27,11 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
 
     if (url.searchParams.get("analiseOnly") === "1" && sessionId) {
-      const { data: sessao, error: sessaoErr } = await supabase
-        .from("whatsapp_sessoes")
-        .select("candidato_id")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (sessaoErr) throw sessaoErr;
-      if (!sessao?.candidato_id) {
-        return NextResponse.json({ analise_completa: null, perfil_resumo: null });
+      const extra = await fetchCandidatoExtras(supabase, sessionId);
+      if (!extra) {
+        return NextResponse.json({ analise_completa: null, perfil_resumo: null, experiencias_cv: [] });
       }
-      const { data: analise, error: analiseErr } = await supabase
-        .from("candidatos_analise")
-        .select("analise_completa,perfil_resumo")
-        .eq("candidato_id", sessao.candidato_id)
-        .maybeSingle();
-      if (analiseErr) throw analiseErr;
-      return NextResponse.json({
-        analise_completa: (analise?.analise_completa as string | null) ?? null,
-        perfil_resumo: (analise?.perfil_resumo as string | null) ?? null,
-      });
+      return NextResponse.json(extra);
     }
 
     if (messagesOnly && sessionId) {
@@ -60,9 +47,20 @@ export async function GET(request: Request) {
     }
 
     const skipPreview = url.searchParams.get("skipPreview") !== "0";
+    const lite = url.searchParams.get("skipLite") !== "0";
+    const listaOnly = url.searchParams.get("listaOnly") === "1";
 
-    const rowsPromise = fetchCrmRows(supabase, vagaId, clienteId, { skipPreview });
+    const rowsPromise = fetchCrmRows(supabase, vagaId, clienteId, { skipPreview, lite });
     const vagasPromise = skipVagas ? Promise.resolve(null) : fetchVagas(supabase);
+
+    if (listaOnly) {
+      const [vagasResult, rows] = await Promise.all([vagasPromise, rowsPromise]);
+      return NextResponse.json(
+        { vagas: vagasResult ?? [], rows, metrics: null, dashboard: null },
+        { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+      );
+    }
+
     const todosPromise = countCandidaturas(supabase, { vagaId, clienteId });
     const [vagasResult, rows, todos] = await Promise.all([
       vagasPromise,

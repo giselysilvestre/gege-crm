@@ -18,6 +18,10 @@ export const FUNIL_PRINCIPAL: EtapaFunil[] = [...CANDIDATURA_ETAPAS];
 /** Sem colunas laterais de saída — mortos ficam na etapa-mãe. */
 export const FUNIL_SAIDAS: EtapaFunil[] = [];
 
+/** Opção extra no modal “Mudar etapa” (não é etapa-mãe do funil). */
+export const ETAPA_DESTINO_REPROVADO = "reprovado" as const;
+export type EtapaDestinoModal = EtapaFunil | typeof ETAPA_DESTINO_REPROVADO;
+
 export const ETAPA_LABELS: Record<EtapaFunil, string> = { ...CANDIDATURA_ETAPA_LABELS };
 
 export const ETAPA_BADGE_CLASS: Record<EtapaFunil, string> = {
