@@ -7,7 +7,7 @@ import {
   type CandidaturaStatus,
 } from "@/lib/candidatura-status";
 
-export type CrmViewId = "kanban" | "conversas" | "funil" | "alertas";
+export type CrmViewId = "kanban" | "conversas" | "funil" | "alertas" | "importar_cvs";
 
 /** Etapas-mãe (Kanban / filtro simples). */
 export const FUNIL_ETAPAS = CANDIDATURA_ETAPAS;

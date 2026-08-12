@@ -94,6 +94,7 @@ import {
 import CrmSidebar from "@/components/crm/CrmSidebar";
 import { CandidatoCvResumoToggle } from "@/components/crm/CandidatoCvResumoToggle";
 import VisaoGeralDashboard from "@/components/crm/VisaoGeralDashboard";
+import ImportarCvsPanel from "@/components/crm/ImportarCvsPanel";
 
 type ViewId = CrmViewId;
 
@@ -102,6 +103,7 @@ const VIEW_LABELS: Record<ViewId, string> = {
   conversas: "Conversas",
   funil: "Visão Geral",
   alertas: "Alertas",
+  importar_cvs: "Importar CVs",
 };
 
 
@@ -1699,7 +1701,11 @@ export default function WhatsappCrmClient({
           <div className="crm-page-heading">
             <h1 className="crm-page-title">{VIEW_LABELS[view]}</h1>
             <p className={`crm-page-subtitle${view === "funil" ? " crm-page-subtitle-pipeline" : ""}`}>
-              {view === "funil" ? "Pipeline operacional" : vagaLabel}
+              {view === "funil"
+                ? "Pipeline operacional"
+                : view === "importar_cvs"
+                  ? "PDFs do notebook → análise Gegê → alocar na vaga"
+                  : vagaLabel}
             </p>
           </div>
           {view === "funil" && (
@@ -1970,6 +1976,22 @@ export default function WhatsappCrmClient({
               >
                 {loadingCrm && rows.length === 0 ? (
                   <ListaSkeleton />
+                ) : error && rows.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-state-icon" aria-hidden="true">
+                      ⚠
+                    </div>
+                    <p className="empty-state-title">Erro ao carregar conversas</p>
+                    <p className="empty-state-hint">{error}</p>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ marginTop: 12 }}
+                      onClick={() => void loadCrm({ force: true })}
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
                 ) : listaFiltrada.length === 0 ? (
                   <EmptyState
                     title="Nenhum candidato encontrado"
@@ -2370,6 +2392,8 @@ export default function WhatsappCrmClient({
             onVerTodosProntos={() => switchView("kanban")}
           />
         )}
+
+        {view === "importar_cvs" && <ImportarCvsPanel vagas={vagas} />}
       </div>
 
       {modal === "reprovar" && (

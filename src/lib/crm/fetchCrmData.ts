@@ -39,8 +39,25 @@ type SessaoRow = {
 const IN_CHUNK = 40;
 /** PostgREST/Supabase devolve no máximo 1000 linhas por consulta — paginar acima disso. */
 const PAGE_SIZE = 1000;
+/** Teto de linhas carregadas no CRM (lista + métricas). */
+export const MAX_CRM_ROWS = 20_000;
 /** Paralelismo máximo de consultas .in() — evita saturar o Supabase. */
 const IN_PARALLEL = 12;
+
+async function fetchPaginated<T>(
+  fetchPage: (from: number, pageSize: number) => Promise<T[]>
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  while (out.length < MAX_CRM_ROWS) {
+    const pageSize = Math.min(PAGE_SIZE, MAX_CRM_ROWS - out.length);
+    const batch = await fetchPage(from, pageSize);
+    out.push(...batch);
+    if (batch.length < pageSize) break;
+    from += batch.length;
+  }
+  return out;
+}
 
 async function mapInBatches<T, R>(
   items: T[],
@@ -183,56 +200,50 @@ const SESSAO_SELECT =
   "id,candidato_id,candidatura_id,etapa_atual,etapa_funil,status,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at,resumo_ia,reativacao_enviada,favorito_crm,criado_em,atualizado_em";
 
 async function fetchAllSessoes(supabase: SupabaseClient): Promise<SessaoRow[]> {
-  const sessoes: SessaoRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
+  return fetchPaginated(async (from, pageSize) => {
     const { data, error } = await supabase
       .from("whatsapp_sessoes")
       .select(SESSAO_SELECT)
-      .order("atualizado_em", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
+      .order("atualizado_em", { ascending: false, nullsFirst: false })
+      .order("criado_em", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + pageSize - 1);
     if (error) throw error;
-    const batch = (data ?? []) as SessaoRow[];
-    sessoes.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-  }
-  return sessoes;
+    return (data ?? []) as SessaoRow[];
+  });
 }
 
 async function fetchSessoesInChunk(
   supabase: SupabaseClient,
   candidaturaIds: string[]
 ): Promise<SessaoRow[]> {
-  const rows: SessaoRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
+  return fetchPaginated(async (from, pageSize) => {
     const { data, error } = await supabase
       .from("whatsapp_sessoes")
       .select(SESSAO_SELECT)
       .in("candidatura_id", candidaturaIds)
-      .order("atualizado_em", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
+      .order("atualizado_em", { ascending: false, nullsFirst: false })
+      .order("criado_em", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + pageSize - 1);
     if (error) throw error;
-    const batch = (data ?? []) as SessaoRow[];
-    rows.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-  }
-  return rows;
+    return (data ?? []) as SessaoRow[];
+  });
 }
 
 async function fetchCandidaturaIdsByVaga(supabase: SupabaseClient, vagaId: string) {
-  const ids: string[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
+  const rows = await fetchPaginated(async (from, pageSize) => {
     const { data, error } = await supabase
       .from("candidaturas")
       .select("id")
       .eq("vaga_id", vagaId)
       .or("arquivada.is.null,arquivada.eq.false")
-      .range(from, from + PAGE_SIZE - 1);
+      .order("id", { ascending: false })
+      .range(from, from + pageSize - 1);
     if (error) throw error;
-    const batch = (data ?? []).map((r) => r.id as string);
-    ids.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-  }
-  return ids;
+    return (data ?? []).map((r) => r.id as string);
+  });
+  return rows;
 }
 
 async function fetchSessoesForCandidaturaIds(

@@ -520,7 +520,8 @@ body {
 }
 
 .btn-primary,
-.btn-ghost {
+.btn-ghost,
+.btn-secondary {
   border-radius: 10px;
   padding: 8px 12px;
   font-weight: 700;
@@ -528,6 +529,23 @@ body {
   cursor: pointer;
   text-align: center;
   text-decoration: none;
+  font-family: inherit;
+}
+
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-primary {
@@ -639,6 +657,12 @@ body {
   display: flex;
   flex-direction: column;
   padding: 20px 12px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
 .crm-sidebar-brand {
@@ -1325,6 +1349,31 @@ body {
 .crm-filters-field .crm-toolbar-select {
   max-width: none;
   width: 100%;
+}
+
+.crm-filters-field .crm-toolbar-input {
+  max-width: none;
+  width: 100%;
+}
+
+.crm-toolbar-input {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.crm-toolbar-input:focus {
+  outline: 2px solid rgba(229, 77, 66, 0.2);
+  border-color: var(--accent);
+}
+
+.crm-toolbar-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .content-area {
@@ -3804,6 +3853,151 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.import-cvs-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+  padding: 0 4px 24px;
+}
+
+.import-cvs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.import-cvs-lead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.import-cvs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.import-cvs-field {
+  padding-bottom: 0;
+}
+
+.import-cvs-field + .import-cvs-field {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.import-cvs-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-muted);
+}
+
+.import-cvs-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.import-cvs-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-cvs-file-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.import-cvs-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.import-cvs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  max-height: 360px;
+  overflow: auto;
+}
+
+.import-cvs-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.import-cvs-row:last-child {
+  border-bottom: none;
+}
+
+.import-cvs-row-name {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.import-cvs-row-meta {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.import-cvs-row--processing .import-cvs-row-meta {
+  color: var(--accent);
+}
+
+.import-cvs-row--error .import-cvs-row-meta {
+  color: var(--danger, #c0392b);
+}
+
+.import-cvs-allocate {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-cvs-allocate .dash-section {
+  margin-bottom: 0;
+}
+
+.import-cvs-allocate-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.import-cvs-feedback {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
 .dash-section {
   font-size: 11px;
   font-weight: 600;
@@ -4177,6 +4371,15 @@ body {
     border-right: none;
     border-bottom: 1px solid var(--border);
     padding: 12px;
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .crm-sidebar-footer {
+    margin-top: 8px;
+    padding-top: 8px;
   }
 
   .crm-sidebar-nav {

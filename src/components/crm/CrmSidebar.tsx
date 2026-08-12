@@ -61,6 +61,20 @@ function IconSparkles({ className }: IconProps) {
   );
 }
 
+function IconUpload({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 16V4m0 0 4 4m-4-4-4 4M5 20h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const NAV: {
   id: CrmViewId;
   label: string;
@@ -71,6 +85,12 @@ const NAV: {
   { id: "conversas", label: "Conversas", Icon: IconMessage },
   { id: "alertas", label: "Alertas", Icon: IconBell },
 ];
+
+const SETTINGS_NAV: {
+  id: CrmViewId;
+  label: string;
+  Icon: (props: IconProps) => ReactNode;
+}[] = [{ id: "importar_cvs", label: "Importar CVs", Icon: IconUpload }];
 
 type CrmSidebarProps = {
   view: CrmViewId;
@@ -111,6 +131,22 @@ export default function CrmSidebar({
               <Icon className="crm-nav-icon" />
               <span className="crm-nav-label">{label}</span>
               {badge != null && <span className="crm-nav-badge">{badge}</span>}
+            </button>
+          );
+        })}
+        <div className="crm-nav-section">Configurações</div>
+        {SETTINGS_NAV.map(({ id, label, Icon }) => {
+          const active = view === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`crm-nav-item${active ? " active" : ""}`}
+              onClick={() => onNavigate(id)}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon className="crm-nav-icon" />
+              <span className="crm-nav-label">{label}</span>
             </button>
           );
         })}
