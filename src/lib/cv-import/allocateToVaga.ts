@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CANDIDATURA_STATUS_INICIAL } from "@/lib/candidatura-status";
+import { ensureWhatsappSessaoForCandidatura } from "@/lib/crm/ensureWhatsappSessao";
 import { garantirUmaCandidaturaAtiva } from "@/lib/crm/umaCandidaturaAtiva";
 import { toNullableInt } from "@/lib/cv-import/normalize";
 
@@ -111,6 +112,7 @@ export async function allocateCandidatosToVaga(
           .eq("id", ativa.id);
         if (upErr) throw upErr;
         await garantirUmaCandidaturaAtiva(supabase, candidatoId, ativa.id as string);
+        await ensureWhatsappSessaoForCandidatura(supabase, candidatoId, ativa.id as string);
         result.movidos += 1;
         continue;
       }
@@ -128,6 +130,7 @@ export async function allocateCandidatosToVaga(
         .single();
       if (insErr) throw insErr;
       await garantirUmaCandidaturaAtiva(supabase, candidatoId, inserted.id as string);
+      await ensureWhatsappSessaoForCandidatura(supabase, candidatoId, inserted.id as string);
       result.inseridos += 1;
     } catch (e) {
       result.erros.push({

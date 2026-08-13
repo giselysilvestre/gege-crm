@@ -13,6 +13,7 @@ import { dentroJanela24h, precisaResposta, ultimaAtividadeFromSessao } from "./f
 import { topExperiencias } from "./experiencia";
 import { inferirEtapaFunil, statusDetalhadoFromCandidatura } from "./mapEtapa";
 import { isCandidaturaMorta } from "@/lib/candidatura-status";
+import { ensureWhatsappSessoesForCandidaturas } from "@/lib/crm/ensureWhatsappSessao";
 
 function isEtapaFunilDb(v: string): v is EtapaFunil {
   return (FUNIL_ETAPAS as readonly string[]).includes(v);
@@ -232,18 +233,29 @@ async function fetchSessoesInChunk(
 }
 
 async function fetchCandidaturaIdsByVaga(supabase: SupabaseClient, vagaId: string) {
-  const rows = await fetchPaginated(async (from, pageSize) => {
+  const rows = await fetchActiveCandidaturasByVaga(supabase, vagaId);
+  return rows.map((r) => r.id);
+}
+
+type CandidaturaRef = { id: string; candidato_id: string };
+
+async function fetchActiveCandidaturasByVaga(
+  supabase: SupabaseClient,
+  vagaId: string
+): Promise<CandidaturaRef[]> {
+  return fetchPaginated(async (from, pageSize) => {
     const { data, error } = await supabase
       .from("candidaturas")
-      .select("id")
+      .select("id,candidato_id")
       .eq("vaga_id", vagaId)
       .or("arquivada.is.null,arquivada.eq.false")
       .order("id", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error) throw error;
-    return (data ?? []).map((r) => r.id as string);
+    return (data ?? [])
+      .filter((r) => r.candidato_id)
+      .map((r) => ({ id: r.id as string, candidato_id: r.candidato_id as string }));
   });
-  return rows;
 }
 
 async function fetchSessoesForCandidaturaIds(
@@ -360,16 +372,20 @@ export async function fetchCrmRows(
   let candidaturaIds: string[];
 
   if (vagaId) {
-    candidaturaIds = await fetchCandidaturaIdsByVaga(supabase, vagaId);
+    const candidaturas = await fetchActiveCandidaturasByVaga(supabase, vagaId);
+    candidaturaIds = candidaturas.map((c) => c.id);
+    await ensureWhatsappSessoesForCandidaturas(supabase, candidaturas);
     sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds);
   } else if (clienteId) {
     const vagaIds = await fetchVagaIdsByCliente(supabase, clienteId);
-    candidaturaIds = [];
+    const candidaturas: CandidaturaRef[] = [];
     for (const vid of vagaIds) {
-      const ids = await fetchCandidaturaIdsByVaga(supabase, vid);
-      candidaturaIds.push(...ids);
+      candidaturas.push(...(await fetchActiveCandidaturasByVaga(supabase, vid)));
     }
-    candidaturaIds = [...new Set(candidaturaIds)];
+    const byId = new Map(candidaturas.map((c) => [c.id, c]));
+    const unique = [...byId.values()];
+    candidaturaIds = unique.map((c) => c.id);
+    await ensureWhatsappSessoesForCandidaturas(supabase, unique);
     sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds);
   } else {
     sessoes = await fetchAllSessoes(supabase);
