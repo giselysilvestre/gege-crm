@@ -116,6 +116,8 @@ export type CrmCandidatoRow = {
   candidatura_atualizado_em: string | null;
   /** Primeiro nome de quem marcou Em contato (manual, nesta vaga). */
   contato_humano_por: string | null;
+  /** Última abertura da conversa no CRM (visualizado). */
+  crm_visualizado_em: string | null;
 };
 
 export type CrmMetrics = {

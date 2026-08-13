@@ -34,6 +34,15 @@ export function listaItemAguardandoResposta(aberta: boolean, precisaResposta: bo
   return !aberta && precisaResposta;
 }
 
+/** Não visualizado = nunca abriu no CRM ou inbound novo depois da última visualização. */
+export function isConversaNaoVisualizada(row: CrmCandidatoRow): boolean {
+  const viz = row.crm_visualizado_em;
+  if (!viz) return true;
+  const inbound = row.ultima_inbound_at;
+  if (!inbound) return false;
+  return Date.parse(inbound) > Date.parse(viz);
+}
+
 /** Outbound enviado por humano no CRM → ícone pessoa; demais outbound → robô. */
 export function isOutboundHumanoCrm(direcao: string, tipoMensagem: string | null): boolean {
   return direcao === "outbound" && tipoMensagem === "manual_crm";

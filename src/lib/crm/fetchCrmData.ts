@@ -32,6 +32,7 @@ type SessaoRow = {
   resumo_ia: string | null;
   reativacao_enviada: boolean | null;
   favorito_crm: boolean | null;
+  crm_visualizado_em: string | null;
   criado_em: string;
   atualizado_em: string | null;
 };
@@ -198,7 +199,7 @@ async function fetchUltimaMensagemPorSessao(
 }
 
 const SESSAO_SELECT =
-  "id,candidato_id,candidatura_id,etapa_atual,etapa_funil,status,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at,resumo_ia,reativacao_enviada,favorito_crm,criado_em,atualizado_em";
+  "id,candidato_id,candidatura_id,etapa_atual,etapa_funil,status,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at,resumo_ia,reativacao_enviada,favorito_crm,crm_visualizado_em,criado_em,atualizado_em";
 
 async function fetchAllSessoes(supabase: SupabaseClient): Promise<SessaoRow[]> {
   return fetchPaginated(async (from, pageSize) => {
@@ -576,6 +577,7 @@ export async function fetchCrmRows(
       motivo_reprovacao: (candRow?.motivo_reprovacao as string | null) ?? null,
       candidatura_status: (candRow?.status as string | null) ?? null,
       favorito_crm: Boolean(s.favorito_crm),
+      crm_visualizado_em: (s.crm_visualizado_em as string | null) ?? null,
       sessao_criado_em: s.criado_em ?? null,
       sessao_etapa_funil:
         s.etapa_funil && isEtapaFunilDb(s.etapa_funil) ? (s.etapa_funil as EtapaFunil) : null,

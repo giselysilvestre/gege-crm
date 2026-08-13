@@ -929,6 +929,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, favorito_crm: favorito });
     }
 
+    if (action === "marcar_visualizado") {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("whatsapp_sessoes")
+        .update({ crm_visualizado_em: now, atualizado_em: now })
+        .eq("id", sessaoId);
+      if (error) {
+        return NextResponse.json({ error: mensagemErro(error) }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, crm_visualizado_em: now });
+    }
+
     if (action === "pausar_agente") {
       await supabase
         .from("whatsapp_sessoes")

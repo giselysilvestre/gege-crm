@@ -2997,6 +2997,39 @@ body {
   flex: 1 1 100px;
 }
 
+.lista-name-nao-visualizado {
+  font-weight: 800;
+}
+
+.lista-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #e54d42);
+  flex-shrink: 0;
+}
+
+.lista-item-nao-visualizado .lista-name-row {
+  gap: 6px;
+}
+
+.crm-filters-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.crm-filters-date-row .crm-toolbar-input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.crm-filters-date-sep {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .lista-last {
   font-size: 12px;
   color: #6b7280;

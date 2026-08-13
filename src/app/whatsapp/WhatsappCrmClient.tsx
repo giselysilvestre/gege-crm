@@ -34,7 +34,13 @@ import {
   interlocutorLista,
   listaItemAguardandoResposta,
   isOutboundHumanoCrm,
+  isConversaNaoVisualizada,
 } from "@/lib/crm/listaConversasUi";
+import {
+  matchFiltroData,
+  matchFiltroReprovados,
+  type FiltroReprovados,
+} from "@/lib/crm/listaConversasFilters";
 import {
   avatarClass,
   iniciais,
@@ -61,6 +67,7 @@ type AcaoResponseJson = ApiErrorJson & {
   aviso?: string;
   vaga_nome?: string;
   contato_humano_por?: string | null;
+  crm_visualizado_em?: string;
 };
 type MessagesResponseJson = ApiErrorJson & { mensagens?: WhatsappMessage[] };
 type ConfigResponseJson = { manualSendEnabled?: boolean };
@@ -376,6 +383,9 @@ export default function WhatsappCrmClient({
   const [filtroEtapa, setFiltroEtapa] = useState<EtapaFunil | "">("");
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
   const [filtroContatoHumano, setFiltroContatoHumano] = useState("");
+  const [filtroReprovados, setFiltroReprovados] = useState<FiltroReprovados>("ativos");
+  const [filtroDataDe, setFiltroDataDe] = useState("");
+  const [filtroDataAte, setFiltroDataAte] = useState("");
   const [buscaNome, setBuscaNome] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("recente");
   const [filtrosOpen, setFiltrosOpen] = useState(false);
@@ -522,6 +532,17 @@ export default function WhatsappCrmClient({
       saveConversasAbertas(next);
       return next;
     });
+    const now = new Date().toISOString();
+    setRows((prev) =>
+      prev.map((r) =>
+        r.sessao_id === selected ? { ...r, crm_visualizado_em: now } : r
+      )
+    );
+    void fetch("/api/whatsapp/acoes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "marcar_visualizado", sessaoId: selected }),
+    }).catch(() => {});
   }, [selected]);
 
   useEffect(() => {
@@ -870,6 +891,10 @@ export default function WhatsappCrmClient({
 
   const rowsFiltrados = useMemo(() => {
     let list = rows;
+    list = list.filter((r) => matchFiltroReprovados(r, filtroReprovados));
+    if (filtroDataDe || filtroDataAte) {
+      list = list.filter((r) => matchFiltroData(r, filtroDataDe, filtroDataAte));
+    }
     if (filtroFavoritos) {
       list = list.filter((r) => r.favorito_crm);
     }
@@ -883,7 +908,15 @@ export default function WhatsappCrmClient({
       list = list.filter((r) => candidatoMatchBusca(r, q));
     }
     return list;
-  }, [rows, buscaNome, filtroFavoritos, filtroContatoHumano]);
+  }, [
+    rows,
+    buscaNome,
+    filtroFavoritos,
+    filtroContatoHumano,
+    filtroReprovados,
+    filtroDataDe,
+    filtroDataAte,
+  ]);
 
   const contatosHumanoOpcoes = useMemo(() => {
     const set = new Set<string>();
@@ -989,6 +1022,8 @@ export default function WhatsappCrmClient({
     (filtroEtapa ? 1 : 0) +
     (filtroFavoritos ? 1 : 0) +
     (filtroContatoHumano ? 1 : 0) +
+    (filtroReprovados !== "ativos" ? 1 : 0) +
+    (filtroDataDe || filtroDataAte ? 1 : 0) +
     (sortBy !== "recente" ? 1 : 0);
 
   const isConversasView = view === "conversas";
@@ -1575,6 +1610,38 @@ export default function WhatsappCrmClient({
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="crm-filters-field">
+                <span>Reprovados</span>
+                <select
+                  className="crm-toolbar-select"
+                  value={filtroReprovados}
+                  onChange={(e) => setFiltroReprovados(e.target.value as FiltroReprovados)}
+                >
+                  <option value="ativos">Ocultar reprovados</option>
+                  <option value="so_reprovados">Só reprovados</option>
+                  <option value="todos">Todos</option>
+                </select>
+              </label>
+              <label className="crm-filters-field">
+                <span>Período (última atividade)</span>
+                <div className="crm-filters-date-row">
+                  <input
+                    type="date"
+                    className="crm-toolbar-input"
+                    value={filtroDataDe}
+                    onChange={(e) => setFiltroDataDe(e.target.value)}
+                    aria-label="Data inicial"
+                  />
+                  <span className="crm-filters-date-sep">até</span>
+                  <input
+                    type="date"
+                    className="crm-toolbar-input"
+                    value={filtroDataAte}
+                    onChange={(e) => setFiltroDataAte(e.target.value)}
+                    aria-label="Data final"
+                  />
+                </div>
               </label>
               <label className="crm-filters-field">
                 <span>Em contato</span>
@@ -2916,10 +2983,11 @@ const ListaConversaItem = memo(function ListaConversaItem({
   const etapaLabel = labelEtapaListaRow(row);
   const interlocutor = interlocutorLista(row.contato_humano_por);
   const aguardandoResposta = listaItemAguardandoResposta(aberta, destaque);
+  const naoVisualizado = isConversaNaoVisualizada(row);
 
   return (
     <div
-      className={`lista-item${selected ? " sel" : ""}${checked ? " lista-item-checked" : ""}${multiselectMode ? " lista-item-multiselect" : ""}${aguardandoResposta ? " lista-item-aguardando" : ""}`}
+      className={`lista-item${selected ? " sel" : ""}${checked ? " lista-item-checked" : ""}${multiselectMode ? " lista-item-multiselect" : ""}${aguardandoResposta ? " lista-item-aguardando" : ""}${naoVisualizado ? " lista-item-nao-visualizado" : ""}`}
       onClick={onSelect}
     >
       {multiselectMode && (
@@ -2959,7 +3027,12 @@ const ListaConversaItem = memo(function ListaConversaItem({
             >
               {row.favorito_crm ? "★" : "☆"}
             </button>
-            <span className="lista-name">{nomePrimeiroUltimo(row.candidato_nome)}</span>
+            <span className={`lista-name${naoVisualizado ? " lista-name-nao-visualizado" : ""}`}>
+              {nomePrimeiroUltimo(row.candidato_nome)}
+            </span>
+            {naoVisualizado && (
+              <span className="lista-unread-dot" title="Não visualizado" aria-label="Não visualizado" />
+            )}
           </div>
           <div className="lista-meta-col">
             <div className="lista-meta-pills">
