@@ -550,6 +550,7 @@ async function executarTemplate(
   const cargo = await loadVagaTitulo(supabase, sessao.candidatura_id);
   const tipoMsg =
     templateName === CRM_TEMPLATE_ABORDAGEM_INICIAL ? "disparo_inicial" : "follow_up_d1";
+  const now = new Date().toISOString();
   const kapso = await sendKapsoTemplate(telefone, templateName, { nome, cargo });
   await registrarOutbound(
     supabase,
@@ -559,6 +560,17 @@ async function executarTemplate(
     kapso.kapsoMessageId,
     { tipo_mensagem: tipoMsg, espera_resposta: true }
   );
+  if (templateName === CRM_TEMPLATE_ABORDAGEM_INICIAL && sessao.candidatura_id) {
+    const { error: sessaoErr } = await supabase
+      .from("whatsapp_sessoes")
+      .update({
+        etapa_atual: "disparo_template",
+        tipo_fluxo: "candidatura",
+        atualizado_em: now,
+      })
+      .eq("id", sessaoId);
+    if (sessaoErr) throw sessaoErr;
+  }
   if (sessao.candidatura_id) {
     await classificarCandidatura(supabase, {
       candidaturaId: sessao.candidatura_id,
