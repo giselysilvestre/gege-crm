@@ -48,10 +48,13 @@ export type MotivoReprovacao = (typeof MOTIVOS_REPROVACAO)[number]["value"];
 
 export const CRM_TEMPLATES_WHATSAPP = [
   { value: "fup_mensagem", label: "FUP — oiii, não esquece de me responder?" },
-  { value: "abordagem_candidatura_gege", label: "Abordagem inicial (nome + vaga)" },
+  { value: "gege_abordagem_vaga", label: "Abordagem inicial (nome + vaga)" },
 ] as const;
 
 export type CrmTemplateWhatsapp = (typeof CRM_TEMPLATES_WHATSAPP)[number]["value"];
+
+/** Template Meta aprovado para abordagem em lote no CRM. */
+export const CRM_TEMPLATE_ABORDAGEM_INICIAL: CrmTemplateWhatsapp = "gege_abordagem_vaga";
 
 export type VagaOption = {
   id: string;

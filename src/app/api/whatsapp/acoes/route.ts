@@ -19,6 +19,7 @@ import { isEtapaFunil, sessaoTemHistoricoMensagem } from "@/lib/crm/mapEtapa";
 import { classificarCandidatura } from "@/lib/crm/classificarCandidatura";
 import { garantirUmaCandidaturaAtiva } from "@/lib/crm/umaCandidaturaAtiva";
 import type { CrmTemplateWhatsapp, EtapaFunil, MotivoReprovacao } from "@/lib/crm/types";
+import { CRM_TEMPLATE_ABORDAGEM_INICIAL } from "@/lib/crm/types";
 import type { CandidaturaStatus } from "@/lib/candidatura-status";
 import {
   CANDIDATURA_STATUS_DESISTENCIA,
@@ -548,7 +549,7 @@ async function executarTemplate(
   const nome = String(cand?.nome ?? "candidato").split(/\s+/)[0];
   const cargo = await loadVagaTitulo(supabase, sessao.candidatura_id);
   const tipoMsg =
-    templateName === "abordagem_candidatura_gege" ? "disparo_inicial" : "follow_up_d1";
+    templateName === CRM_TEMPLATE_ABORDAGEM_INICIAL ? "disparo_inicial" : "follow_up_d1";
   const kapso = await sendKapsoTemplate(telefone, templateName, { nome, cargo });
   await registrarOutbound(
     supabase,

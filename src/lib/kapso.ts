@@ -1,5 +1,14 @@
 import { isKapsoConfigured } from "@/lib/kapsoConfig";
 
+function formatKapsoError(status: number, body: string): string {
+  if (body.includes("132001") || body.includes("does not exist in the translation")) {
+    const match = body.match(/template name \(([^)]+)\)/i);
+    const name = match?.[1] ?? "template";
+    return `Template "${name}" não está cadastrado na Meta/Kapso (pt_BR).`;
+  }
+  return `Kapso ${status}: ${body.length > 220 ? `${body.slice(0, 220)}…` : body}`;
+}
+
 export async function sendKapsoText(toDigits: string, message: string) {
   const phoneNumberId = process.env.KAPSO_PHONE_NUMBER_ID?.trim();
   const apiKey = process.env.KAPSO_API_KEY?.trim();
@@ -27,7 +36,7 @@ export async function sendKapsoText(toDigits: string, message: string) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Kapso ${response.status}: ${text}`);
+    throw new Error(formatKapsoError(response.status, text));
   }
 
   const json = (await response.json()) as {
@@ -74,8 +83,7 @@ export async function sendKapsoTemplate(
       const pareceParametro =
         msg.includes("400") ||
         msg.includes("132000") ||
-        msg.includes("132001") ||
-        /parameter/i.test(msg);
+        (/parameter/i.test(msg) && !msg.includes("132001"));
       if (!pareceParametro) throw err;
       template.components = [
         {
@@ -88,6 +96,13 @@ export async function sendKapsoTemplate(
       ];
       return postKapsoTemplate(toDigits, template, phoneNumberId, apiKey);
     }
+  }
+
+  if (templateName === "gege_abordagem_vaga") {
+    return sendKapsoTemplateNamedParams(toDigits, templateName, [
+      { parameter_name: "nome", text: params?.nome ?? "candidato" },
+      { parameter_name: "vaga", text: params?.cargo ?? "vaga" },
+    ]);
   }
 
   return postKapsoTemplate(toDigits, template, phoneNumberId, apiKey);
@@ -151,7 +166,7 @@ async function postKapsoTemplate(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Kapso ${response.status}: ${text}`);
+    throw new Error(formatKapsoError(response.status, text));
   }
 
   const json = (await response.json()) as {

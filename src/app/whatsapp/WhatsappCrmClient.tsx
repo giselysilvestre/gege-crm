@@ -20,6 +20,7 @@ import type {
   WhatsappMessage,
 } from "@/lib/crm/types";
 import {
+  CRM_TEMPLATE_ABORDAGEM_INICIAL,
   ETAPA_DESTINO_REPROVADO,
   ETAPA_LABELS,
   EtapaDestinoModal,
@@ -2921,7 +2922,7 @@ export default function WhatsappCrmClient({
                 onClick={() => {
                   setModal(null);
                   void runBulkAction("template_lote", {
-                    template: "abordagem_candidatura_gege",
+                    template: CRM_TEMPLATE_ABORDAGEM_INICIAL,
                   });
                 }}
               >
