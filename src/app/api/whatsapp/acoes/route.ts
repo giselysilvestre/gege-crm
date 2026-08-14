@@ -572,10 +572,30 @@ async function executarTemplate(
     if (sessaoErr) throw sessaoErr;
   }
   if (sessao.candidatura_id) {
-    await classificarCandidatura(supabase, {
-      candidaturaId: sessao.candidatura_id,
-      evento: "disparo_enviado",
-    });
+    const statusAtual = normalizeCandidaturaStatus(
+      await loadCandidaturaStatus(supabase, sessao.candidatura_id)
+    );
+    // Reabordagem explícita no CRM: não manter "contratado" legado/errado bloqueando o funil.
+    if (
+      templateName === CRM_TEMPLATE_ABORDAGEM_INICIAL &&
+      statusAtual === "contratado"
+    ) {
+      const { error: candErr } = await supabase
+        .from("candidaturas")
+        .update({ status: "abordado_sem_resposta", atualizado_em: now })
+        .eq("id", sessao.candidatura_id);
+      if (candErr) throw candErr;
+      const { error: funilErr } = await supabase
+        .from("whatsapp_sessoes")
+        .update({ etapa_funil: "abordado", atualizado_em: now })
+        .eq("candidatura_id", sessao.candidatura_id);
+      if (funilErr) throw funilErr;
+    } else {
+      await classificarCandidatura(supabase, {
+        candidaturaId: sessao.candidatura_id,
+        evento: "disparo_enviado",
+      });
+    }
   }
 }
 
