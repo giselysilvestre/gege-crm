@@ -146,7 +146,11 @@ export default function ImportarCvsPanel({ vagas }: { vagas: VagaOption[] }) {
         form.set("batchId", batchId);
         form.set("origem", origemFinal);
 
-        const res = await fetch("/api/cvs/import", { method: "POST", body: form });
+        const res = await fetch("/api/cvs/import", {
+          method: "POST",
+          body: form,
+          credentials: "same-origin",
+        });
         const json = await readJsonResponse<ImportResponse>(res);
         if (!res.ok) throw new Error(json.error ?? "Falha na importação");
         const elapsedMs = Date.now() - startedAt;
@@ -205,6 +209,7 @@ export default function ImportarCvsPanel({ vagas }: { vagas: VagaOption[] }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vagaId, candidatoIds: successIds }),
+        credentials: "same-origin",
       });
       const json = await readJsonResponse<AllocateResponse>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro ao alocar");
@@ -242,8 +247,8 @@ export default function ImportarCvsPanel({ vagas }: { vagas: VagaOption[] }) {
     <div className="import-cvs-view">
       <div className="import-cvs-panel crm-panel">
         <p className="import-cvs-lead">
-          Selecione até {MAX_FILES} CVs para serem analisados e salvos no banco de talentos (formato
-          obrigatório em PDF).
+          Selecione até {MAX_FILES} CVs em PDF (máx. 4 MB cada) para analisar e salvar no banco de
+          talentos.
         </p>
 
         <div className="import-cvs-form">

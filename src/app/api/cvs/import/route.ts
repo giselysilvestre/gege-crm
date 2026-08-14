@@ -6,9 +6,15 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+/** Vercel Hobby: até 300s. Análise de CV pode levar ~30–90s. */
+export const maxDuration = 300;
 
-const MAX_BYTES = 12 * 1024 * 1024;
+/** Limite real do body no Vercel (~4,5 MB). Acima disso a plataforma devolve HTML, não JSON. */
+const MAX_BYTES = 4 * 1024 * 1024;
+
+export async function GET() {
+  return NextResponse.json({ ok: true, service: "cvs-import" });
+}
 
 export async function POST(request: Request) {
   try {
@@ -25,7 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Só aceitamos PDF" }, { status: 400 });
     }
     if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: "PDF muito grande (máx. 12 MB por arquivo)" }, { status: 400 });
+      return NextResponse.json({ error: "PDF muito grande (máx. 4 MB por arquivo)" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
