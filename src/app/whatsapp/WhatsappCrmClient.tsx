@@ -433,6 +433,15 @@ export default function WhatsappCrmClient({
   const [enviarMsgAcao, setEnviarMsgAcao] = useState(false);
   const [modeloMensagemManual, setModeloMensagemManual] = useState<ModeloMensagemAcao | "">("");
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    total: number;
+    done: number;
+    ok: number;
+    falhas: number;
+    currentLabel: string;
+    finished: boolean;
+    detalhesErro?: string;
+  } | null>(null);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [multiselectMode, setMultiselectMode] = useState(false);
   const [listaMenuOpen, setListaMenuOpen] = useState(false);
@@ -869,6 +878,9 @@ export default function WhatsappCrmClient({
     if (opts?.resetEnviarMsg !== false) {
       setEnviarMsgAcao(false);
     }
+    if (m === "confirmar_abordagem_lote") {
+      setBulkProgress(null);
+    }
     setModal(m);
   }
 
@@ -1234,6 +1246,134 @@ export default function WhatsappCrmClient({
     } finally {
       setBulkProcessing(false);
     }
+  }
+
+  async function fecharModalAbordagemLote() {
+    const prog = bulkProgress;
+    setModal(null);
+    setBulkProgress(null);
+    if (prog && prog.ok > 0) {
+      for (const sid of checkedIds) messagesCache.current.delete(sid);
+    }
+    if (prog && prog.falhas === 0) {
+      setCheckedIds([]);
+      setMultiselectMode(false);
+      setBulkMenuOpen(false);
+    }
+    await loadCrm({ force: true });
+    if (selected) await loadMessages(selected, { force: true });
+  }
+
+  async function runAbordagemLote() {
+    if (checkedIds.length === 0 || abordagemLoteBloqueios.length > 0) return;
+
+    const ids = [...checkedIds];
+    const rowById = new Map(checkedRows.map((r) => [r.sessao_id, r]));
+
+    setBulkProcessing(true);
+    setActionMsg(null);
+    setBulkProgress({
+      total: ids.length,
+      done: 0,
+      ok: 0,
+      falhas: 0,
+      currentLabel: "Conectando com o WhatsApp…",
+      finished: false,
+    });
+
+    let ok = 0;
+    const errosList: string[] = [];
+
+    for (let i = 0; i < ids.length; i += 1) {
+      const sid = ids[i];
+      const row = rowById.get(sid);
+      const nome = row ? nomePrimeiroUltimo(row.candidato_nome) : "candidato";
+
+      setBulkProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              done: i,
+              currentLabel: `Enviando para ${nome}… (${i + 1} de ${ids.length})`,
+            }
+          : null
+      );
+
+      try {
+        const res = await fetch("/api/whatsapp/acoes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "template_lote",
+            sessaoIds: [sid],
+            template: CRM_TEMPLATE_ABORDAGEM_INICIAL,
+          }),
+        });
+        const json = await readJsonResponse<AcaoResponseJson>(res);
+        if (!res.ok) throw new Error(json.error ?? "Erro ao enviar abordagem");
+
+        const processados = json.processados ?? 0;
+        if (processados > 0) {
+          ok += 1;
+        } else {
+          const msg =
+            json.erros?.[0] && typeof json.erros[0] === "object" && "error" in json.erros[0]
+              ? String((json.erros[0] as { error?: string }).error ?? "Erro desconhecido")
+              : "Erro ao enviar";
+          errosList.push(msg);
+        }
+      } catch (err) {
+        errosList.push(err instanceof Error ? err.message : String(err));
+      }
+
+      setBulkProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              done: i + 1,
+              ok,
+              falhas: errosList.length,
+            }
+          : null
+      );
+
+      if (i < ids.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
+
+    const detalhesErro = [...new Set(errosList)].slice(0, 2).join(" · ");
+    const falhas = errosList.length;
+
+    if (falhas > 0) {
+      setActionMsg(
+        ok > 0
+          ? `${ok} enviado(s), ${falhas} com erro${detalhesErro ? `: ${detalhesErro}` : ""}`
+          : `${falhas} com erro${detalhesErro ? `: ${detalhesErro}` : ""}`
+      );
+    } else {
+      setActionMsg(`${ok} abordagem(ns) enviada(s).`);
+    }
+
+    setBulkProgress((prev) =>
+      prev
+        ? {
+            ...prev,
+            done: ids.length,
+            ok,
+            falhas,
+            finished: true,
+            currentLabel:
+              falhas === 0
+                ? "Tudo certo — mensagens enviadas."
+                : ok > 0
+                  ? "Concluído com alguns erros."
+                  : "Nenhuma mensagem foi enviada.",
+            detalhesErro: detalhesErro || undefined,
+          }
+        : null
+    );
+    setBulkProcessing(false);
   }
 
   async function bulkFavoritar() {
@@ -2887,48 +3027,97 @@ export default function WhatsappCrmClient({
       )}
 
       {modal === "confirmar_abordagem_lote" && (
-        <div className="modal-overlay" onClick={() => !bulkProcessing && setModal(null)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!bulkProcessing && !bulkProgress?.finished) setModal(null);
+          }}
+        >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3>Enviar abordagem?</h3>
-            <p className="modal-hint">
-              Vai disparar a mensagem inicial de abordagem (template WhatsApp com nome + vaga) para{" "}
-              <strong>{checkedIds.length}</strong> candidato(s) selecionado(s).
-            </p>
-            <p className="modal-hint modal-hint-warn">
-              Confira a seleção antes de confirmar — o envio não pode ser desfeito pelo CRM.
-            </p>
-            {abordagemLoteBloqueios.length > 0 && (
-              <p className="modal-hint modal-hint-warn">
-                {abordagemLoteBloqueios.join(" ")}
-              </p>
+            {!bulkProgress ? (
+              <>
+                <h3>Enviar abordagem?</h3>
+                <p className="modal-hint">
+                  Vai disparar a mensagem inicial de abordagem (template WhatsApp com nome + vaga)
+                  para <strong>{checkedIds.length}</strong> candidato(s) selecionado(s).
+                </p>
+                <p className="modal-hint modal-hint-warn">
+                  Confira a seleção antes de confirmar — o envio não pode ser desfeito pelo CRM.
+                </p>
+                {abordagemLoteBloqueios.length > 0 && (
+                  <p className="modal-hint modal-hint-warn">
+                    {abordagemLoteBloqueios.join(" ")}
+                  </p>
+                )}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setModal(null)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={
+                      checkedIds.length === 0 || abordagemLoteBloqueios.length > 0
+                    }
+                    onClick={() => void runAbordagemLote()}
+                  >
+                    {`Confirmar (${checkedIds.length})`}
+                  </button>
+                </div>
+              </>
+            ) : !bulkProgress.finished ? (
+              <>
+                <h3>Enviando abordagem…</h3>
+                <p className="modal-hint bulk-progress-label">{bulkProgress.currentLabel}</p>
+                <div className="bulk-progress-wrap" role="progressbar" aria-valuemin={0} aria-valuemax={bulkProgress.total} aria-valuenow={bulkProgress.done}>
+                  <div
+                    className="bulk-progress-fill"
+                    style={{
+                      width: `${bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%`,
+                    }}
+                  />
+                </div>
+                <p className="modal-hint bulk-progress-meta">
+                  <span className="bulk-progress-spinner" aria-hidden="true" />
+                  {bulkProgress.done} de {bulkProgress.total} processado(s)
+                  {bulkProgress.ok > 0 ? ` · ${bulkProgress.ok} enviado(s)` : ""}
+                  {bulkProgress.falhas > 0 ? ` · ${bulkProgress.falhas} com erro` : ""}
+                </p>
+                <p className="modal-hint">
+                  Aguarde — o WhatsApp recebe uma mensagem por vez para evitar bloqueio.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3>{bulkProgress.falhas === 0 ? "Abordagens enviadas" : "Envio concluído"}</h3>
+                <p className="modal-hint">{bulkProgress.currentLabel}</p>
+                <p className="modal-hint bulk-progress-summary">
+                  <strong>{bulkProgress.ok}</strong> enviado(s)
+                  {bulkProgress.falhas > 0 && (
+                    <>
+                      {" "}
+                      · <strong>{bulkProgress.falhas}</strong> com erro
+                    </>
+                  )}
+                </p>
+                {bulkProgress.detalhesErro && (
+                  <p className="modal-hint modal-hint-warn">{bulkProgress.detalhesErro}</p>
+                )}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void fecharModalAbordagemLote()}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </>
             )}
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={bulkProcessing}
-                onClick={() => setModal(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={
-                  bulkProcessing ||
-                  checkedIds.length === 0 ||
-                  abordagemLoteBloqueios.length > 0
-                }
-                onClick={() => {
-                  setModal(null);
-                  void runBulkAction("template_lote", {
-                    template: CRM_TEMPLATE_ABORDAGEM_INICIAL,
-                  });
-                }}
-              >
-                {bulkProcessing ? "Enviando…" : `Confirmar (${checkedIds.length})`}
-              </button>
-            </div>
           </div>
         </div>
       )}
