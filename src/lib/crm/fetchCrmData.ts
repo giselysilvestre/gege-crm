@@ -11,7 +11,7 @@ import type {
 import { FUNIL_ETAPAS } from "./types";
 import { dentroJanela24h, precisaResposta, ultimaAtividadeFromSessao } from "./format";
 import { topExperiencias } from "./experiencia";
-import { inferirEtapaFunil, statusDetalhadoFromCandidatura } from "./mapEtapa";
+import { inferirEtapaFunil, statusDetalhadoExibicao } from "./mapEtapa";
 import { isCandidaturaMorta } from "@/lib/candidatura-status";
 import { ensureWhatsappSessoesForCandidaturas } from "@/lib/crm/ensureWhatsappSessao";
 
@@ -552,7 +552,7 @@ export async function fetchCrmRows(
           motivo_reprovacao: candRow.motivo_reprovacao as string | null,
         }
       : null;
-    const statusDetalhado = statusDetalhadoFromCandidatura(candLike);
+    const statusDetalhado = statusDetalhadoExibicao(s, candLike);
     const etapaFunil = inferirEtapaFunil(
       s,
       candLike,

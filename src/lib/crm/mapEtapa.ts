@@ -17,6 +17,13 @@ type SessaoLike = {
   primeira_resposta_at: string | null;
 };
 
+/** Sessão com pelo menos uma msg registrada (in/out). Sessão vazia = inscrito. */
+export function sessaoTemHistoricoMensagem(sessao: SessaoLike): boolean {
+  return Boolean(
+    sessao.ultima_inbound_at || sessao.ultima_outbound_at || sessao.primeira_resposta_at
+  );
+}
+
 type CandidaturaLike = {
   status?: string | null;
   motivo_reprovacao?: string | null;
@@ -32,18 +39,30 @@ export function inferirEtapaFunil(
   _analise?: { score_pos_entrevista?: number | null } | null
 ): EtapaFunil {
   const fromCand = etapaFromStatus(candidatura?.status ?? null);
+  const temMsg = sessaoTemHistoricoMensagem(sessao);
+
+  if (fromCand && fromCand !== "inscrito" && !temMsg) {
+    return "inscrito";
+  }
   if (fromCand) return fromCand;
 
   const fromSessao = etapaFromStatus(sessao.etapa_funil);
-  if (fromSessao) return fromSessao;
+  if (fromSessao && (fromSessao === "inscrito" || temMsg)) return fromSessao;
+  if (fromSessao && fromSessao !== "inscrito" && !temMsg) {
+    return "inscrito";
+  }
 
   // Legado etapa_funil antiga (respondeu, interessado…)
   const legacy = String(sessao.etapa_funil ?? "").trim();
-  if (legacy === "respondeu" || legacy === "interessado" || legacy === "inativo") return "abordado";
-  if (legacy === "reprovado" || legacy === "desistiu") return "abordado";
+  if (legacy === "respondeu" || legacy === "interessado" || legacy === "inativo") {
+    return temMsg ? "abordado" : "inscrito";
+  }
+  if (legacy === "reprovado" || legacy === "desistiu") return temMsg ? "abordado" : "inscrito";
 
-  if (sessao.ultima_inbound_at || sessao.primeira_resposta_at) return "abordado";
-  if (sessao.ultima_outbound_at) return "abordado";
+  if (temMsg) {
+    if (sessao.ultima_inbound_at || sessao.primeira_resposta_at) return "abordado";
+    if (sessao.ultima_outbound_at) return "abordado";
+  }
   return "inscrito";
 }
 
@@ -51,6 +70,22 @@ export function statusDetalhadoFromCandidatura(
   candidatura: CandidaturaLike | null
 ): CandidaturaStatus | null {
   return normalizeCandidaturaStatus(candidatura?.status ?? null);
+}
+
+/** Status exibido no CRM: sem msg na sessão, etapas além de inscrito voltam ao inicial. */
+export function statusDetalhadoExibicao(
+  sessao: SessaoLike,
+  candidatura: CandidaturaLike | null
+): CandidaturaStatus | null {
+  const raw = statusDetalhadoFromCandidatura(candidatura);
+  if (!raw) return null;
+  if (!sessaoTemHistoricoMensagem(sessao)) {
+    const etapa = etapaFromStatus(raw);
+    if (etapa && etapa !== "inscrito") {
+      return CANDIDATURA_STATUS_INICIAL;
+    }
+  }
+  return raw;
 }
 
 export function proximaEtapaFunil(atual: EtapaFunil): EtapaFunil | null {

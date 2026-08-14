@@ -14,7 +14,7 @@ import {
   preencherMensagemAcao,
   type ModeloMensagemAcao,
 } from "@/lib/crm/mensagens-acao";
-import { isEtapaFunil } from "@/lib/crm/mapEtapa";
+import { isEtapaFunil, sessaoTemHistoricoMensagem } from "@/lib/crm/mapEtapa";
 import { classificarCandidatura } from "@/lib/crm/classificarCandidatura";
 import { garantirUmaCandidaturaAtiva } from "@/lib/crm/umaCandidaturaAtiva";
 import type { CrmTemplateWhatsapp, EtapaFunil, MotivoReprovacao } from "@/lib/crm/types";
@@ -296,6 +296,13 @@ async function executarAvancar(
   const proxStatus = nextCandidaturaStatus(statusAtual);
   if (!proxStatus) throw new Error("Não há próxima etapa");
 
+  const proxEtapa = etapaFromStatus(proxStatus);
+  if (proxEtapa && proxEtapa !== "inscrito" && !sessaoTemHistoricoMensagem(sessao)) {
+    throw new Error(
+      "Só é possível avançar além de Inscrito depois de enviar ou receber mensagem no WhatsApp."
+    );
+  }
+
   await classificarCandidatura(supabase, {
     candidaturaId: sessao.candidatura_id,
     evento: "manual",
@@ -340,6 +347,12 @@ async function executarMoverEtapaFunil(
   statusDetalhado?: CandidaturaStatus | null
 ): Promise<EtapaFunil> {
   if (!sessao.candidatura_id) throw new Error("Sessão sem candidatura — status não pode ser salvo");
+
+  if (destino !== "inscrito" && !sessaoTemHistoricoMensagem(sessao)) {
+    throw new Error(
+      "Só é possível avançar além de Inscrito depois de enviar ou receber mensagem no WhatsApp."
+    );
+  }
 
   if (destino === "encaminhado" && !statusDetalhado) {
     await executarEncaminhar(supabase, sessaoId, sessao);
@@ -540,6 +553,12 @@ async function executarTemplate(
     kapso.kapsoMessageId,
     { tipo_mensagem: "follow_up_d1", espera_resposta: true }
   );
+  if (sessao.candidatura_id) {
+    await classificarCandidatura(supabase, {
+      candidaturaId: sessao.candidatura_id,
+      evento: "disparo_enviado",
+    });
+  }
 }
 
 async function executarEmContato(
