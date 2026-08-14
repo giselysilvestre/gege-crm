@@ -1048,6 +1048,9 @@ export default function WhatsappCrmClient({
     return listaFiltrada.every((r) => checkedIds.includes(r.sessao_id));
   }, [listaFiltrada, checkedIds]);
 
+  const algumasListaSelecionadas =
+    checkedIds.length > 0 && !todasListaSelecionadas && listaFiltrada.length > 0;
+
   const selecionarTudoLista = useCallback(() => {
     if (todasListaSelecionadas) {
       setCheckedIds([]);
@@ -1919,14 +1922,19 @@ export default function WhatsappCrmClient({
                   <span className="lista-select-count">
                     Selecionadas: {checkedIds.length}
                   </span>
-                  <button
-                    type="button"
-                    className="lista-select-all-btn"
-                    disabled={bulkProcessing || listaFiltrada.length === 0}
-                    onClick={selecionarTudoLista}
-                  >
-                    {todasListaSelecionadas ? "Desmarcar tudo" : "Selecionar tudo"}
-                  </button>
+                  <label className="lista-select-all-check">
+                    <input
+                      type="checkbox"
+                      className="lista-select-all-input"
+                      checked={todasListaSelecionadas}
+                      disabled={bulkProcessing || listaFiltrada.length === 0}
+                      ref={(el) => {
+                        if (el) el.indeterminate = algumasListaSelecionadas;
+                      }}
+                      onChange={() => selecionarTudoLista()}
+                    />
+                    <span>Todos</span>
+                  </label>
                   <div className="lista-select-menu-wrap" ref={bulkMenuRef}>
                     <button
                       type="button"
@@ -1940,6 +1948,19 @@ export default function WhatsappCrmClient({
                     </button>
                     {bulkMenuOpen && checkedIds.length > 0 && (
                       <div className="lista-menu-dropdown lista-menu-dropdown--bulk" role="menu">
+                        <button
+                          type="button"
+                          className="lista-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setBulkMenuOpen(false);
+                            void runBulkAction("template_lote", {
+                              template: "abordagem_candidatura_gege",
+                            });
+                          }}
+                        >
+                          Enviar abordagem
+                        </button>
                         <button
                           type="button"
                           className="lista-menu-item"

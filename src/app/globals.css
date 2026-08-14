@@ -2515,6 +2515,32 @@ body {
   white-space: nowrap;
 }
 
+.lista-select-all-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lista-select-all-check:has(.lista-select-all-input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lista-select-all-input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #fff;
+  cursor: inherit;
+}
+
 .lista-select-all-btn {
   flex-shrink: 0;
   padding: 5px 10px;
