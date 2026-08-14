@@ -63,15 +63,31 @@ export async function sendKapsoTemplate(
     language: { code: "pt_BR" },
   };
   if (templateName === "abordagem_candidatura_gege") {
-    template.components = [
-      {
-        type: "body",
-        parameters: [
-          { type: "text", text: params?.nome ?? "candidato" },
-          { type: "text", text: params?.cargo ?? "vaga" },
-        ],
-      },
+    const namedParams = [
+      { parameter_name: "nome", text: params?.nome ?? "candidato" },
+      { parameter_name: "vaga", text: params?.cargo ?? "vaga" },
     ];
+    try {
+      return await sendKapsoTemplateNamedParams(toDigits, templateName, namedParams);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const pareceParametro =
+        msg.includes("400") ||
+        msg.includes("132000") ||
+        msg.includes("132001") ||
+        /parameter/i.test(msg);
+      if (!pareceParametro) throw err;
+      template.components = [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: params?.nome ?? "candidato" },
+            { type: "text", text: params?.cargo ?? "vaga" },
+          ],
+        },
+      ];
+      return postKapsoTemplate(toDigits, template, phoneNumberId, apiKey);
+    }
   }
 
   return postKapsoTemplate(toDigits, template, phoneNumberId, apiKey);

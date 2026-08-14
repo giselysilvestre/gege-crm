@@ -63,7 +63,9 @@ import { readJsonResponse } from "@/lib/parseJsonResponse";
 type ApiErrorJson = { error?: string };
 type AcaoResponseJson = ApiErrorJson & {
   ok?: number | boolean;
-  erros?: unknown[];
+  processados?: number;
+  total?: number;
+  erros?: { sessaoId?: string; error: string }[];
   aviso?: string;
   vaga_nome?: string;
   contato_humano_por?: string | null;
@@ -1031,19 +1033,6 @@ export default function WhatsappCrmClient({
     );
   }, []);
 
-  const prevCheckedCountRef = useRef(0);
-  useEffect(() => {
-    if (
-      multiselectMode &&
-      prevCheckedCountRef.current > 0 &&
-      checkedIds.length === 0
-    ) {
-      setMultiselectMode(false);
-      setBulkMenuOpen(false);
-    }
-    prevCheckedCountRef.current = checkedIds.length;
-  }, [multiselectMode, checkedIds.length]);
-
   const todasListaSelecionadas = useMemo(() => {
     if (listaFiltrada.length === 0) return false;
     return listaFiltrada.every((r) => checkedIds.includes(r.sessao_id));
@@ -1071,6 +1060,22 @@ export default function WhatsappCrmClient({
     () => rows.filter((r) => checkedIds.includes(r.sessao_id)),
     [rows, checkedIds]
   );
+
+  const abordagemLoteBloqueios = useMemo(() => {
+    const issues: string[] = [];
+    if (manualSendEnabled === false) {
+      issues.push(
+        "Envio WhatsApp não configurado no servidor (Kapso). Peça para conferir as variáveis na Vercel."
+      );
+    }
+    const semTelefone = checkedRows.filter((r) => !String(r.telefone ?? "").trim());
+    if (semTelefone.length > 0) {
+      issues.push(
+        `${semTelefone.length} selecionado(s) sem telefone — não dá para abordar pelo WhatsApp.`
+      );
+    }
+    return issues;
+  }, [checkedRows, manualSendEnabled]);
 
   const alvoAcaoIds = useMemo(() => {
     if (checkedIds.length > 0) return checkedIds;
@@ -1194,17 +1199,32 @@ export default function WhatsappCrmClient({
           crmCache.current.set(key, { ...cached, rows: patchRows(cached.rows) });
         }
       }
-      const ok = typeof json.ok === "number" ? json.ok : checkedIds.length;
-      const erros = json.erros?.length ?? 0;
-      setActionMsg(
-        erros > 0
-          ? `${ok} processado(s), ${erros} com erro.`
-          : `${ok} candidato(s) processado(s).`
+      const processados = json.processados ?? 0;
+      const errosList = (json.erros ?? []).map((e) =>
+        typeof e === "object" && e && "error" in e
+          ? String((e as { error?: string }).error ?? "Erro desconhecido")
+          : String(e ?? "Erro desconhecido")
       );
+      const falhas = errosList.length;
+      if (falhas > 0) {
+        const detalhes = [...new Set(errosList)].slice(0, 2).join(" · ");
+        setActionMsg(
+          processados > 0
+            ? `${processados} enviado(s), ${falhas} com erro: ${detalhes}`
+            : `${falhas} com erro: ${detalhes}`
+        );
+      } else {
+        setActionMsg(`${processados} candidato(s) processado(s).`);
+      }
+      if (json.aviso) {
+        setActionMsg((prev) => (prev ? `${prev} ${json.aviso}` : json.aviso ?? null));
+      }
       for (const sid of checkedIds) messagesCache.current.delete(sid);
-      setCheckedIds([]);
-      setMultiselectMode(false);
-      setBulkMenuOpen(false);
+      if (falhas === 0) {
+        setCheckedIds([]);
+        setMultiselectMode(false);
+        setBulkMenuOpen(false);
+      }
       setModal(null);
       await loadCrm({ force: true });
       if (selected) await loadMessages(selected, { force: true });
@@ -2877,6 +2897,11 @@ export default function WhatsappCrmClient({
             <p className="modal-hint modal-hint-warn">
               Confira a seleção antes de confirmar — o envio não pode ser desfeito pelo CRM.
             </p>
+            {abordagemLoteBloqueios.length > 0 && (
+              <p className="modal-hint modal-hint-warn">
+                {abordagemLoteBloqueios.join(" ")}
+              </p>
+            )}
             <div className="modal-actions">
               <button
                 type="button"
@@ -2889,7 +2914,11 @@ export default function WhatsappCrmClient({
               <button
                 type="button"
                 className="btn-primary"
-                disabled={bulkProcessing || checkedIds.length === 0}
+                disabled={
+                  bulkProcessing ||
+                  checkedIds.length === 0 ||
+                  abordagemLoteBloqueios.length > 0
+                }
                 onClick={() => {
                   setModal(null);
                   void runBulkAction("template_lote", {

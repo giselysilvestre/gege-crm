@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isKapsoConfigured } from "@/lib/kapsoConfig";
 import {
   conteudoLogTemplate,
   normalizarTelefone,
@@ -544,6 +545,8 @@ async function executarTemplate(
   }
   const nome = String(cand?.nome ?? "candidato").split(/\s+/)[0];
   const cargo = await loadVagaTitulo(supabase, sessao.candidatura_id);
+  const tipoMsg =
+    templateName === "abordagem_candidatura_gege" ? "disparo_inicial" : "follow_up_d1";
   const kapso = await sendKapsoTemplate(telefone, templateName, { nome, cargo });
   await registrarOutbound(
     supabase,
@@ -551,7 +554,7 @@ async function executarTemplate(
     sessao.candidato_id,
     conteudoLogTemplate(templateName),
     kapso.kapsoMessageId,
-    { tipo_mensagem: "follow_up_d1", espera_resposta: true }
+    { tipo_mensagem: tipoMsg, espera_resposta: true }
   );
   if (sessao.candidatura_id) {
     await classificarCandidatura(supabase, {
@@ -766,6 +769,15 @@ export async function POST(request: Request) {
       }
       if (sessaoIds.length === 0) {
         return NextResponse.json({ error: "sessaoIds é obrigatório" }, { status: 400 });
+      }
+      if (!isKapsoConfigured()) {
+        return NextResponse.json(
+          {
+            error:
+              "Envio WhatsApp não configurado no servidor. Configure KAPSO_API_KEY e KAPSO_PHONE_NUMBER_ID na Vercel.",
+          },
+          { status: 503 }
+        );
       }
 
       const erros: { sessaoId: string; error: string }[] = [];
