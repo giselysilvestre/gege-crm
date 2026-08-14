@@ -420,6 +420,7 @@ export default function WhatsappCrmClient({
     | "encaminhar"
     | "avancar"
     | "mandar_mensagem"
+    | "confirmar_abordagem_lote"
     | null
   >(null);
   const [motivoReprovar, setMotivoReprovar] = useState("");
@@ -1922,19 +1923,6 @@ export default function WhatsappCrmClient({
                   <span className="lista-select-count">
                     Selecionadas: {checkedIds.length}
                   </span>
-                  <label className="lista-select-all-check">
-                    <input
-                      type="checkbox"
-                      className="lista-select-all-input"
-                      checked={todasListaSelecionadas}
-                      disabled={bulkProcessing || listaFiltrada.length === 0}
-                      ref={(el) => {
-                        if (el) el.indeterminate = algumasListaSelecionadas;
-                      }}
-                      onChange={() => selecionarTudoLista()}
-                    />
-                    <span>Todos</span>
-                  </label>
                   <div className="lista-select-menu-wrap" ref={bulkMenuRef}>
                     <button
                       type="button"
@@ -1954,9 +1942,7 @@ export default function WhatsappCrmClient({
                           role="menuitem"
                           onClick={() => {
                             setBulkMenuOpen(false);
-                            void runBulkAction("template_lote", {
-                              template: "abordagem_candidatura_gege",
-                            });
+                            abrirModal("confirmar_abordagem_lote");
                           }}
                         >
                           Enviar abordagem
@@ -2050,6 +2036,34 @@ export default function WhatsappCrmClient({
               <div
                 className={`lista-items${multiselectMode ? " lista-items-multiselect" : ""}`}
               >
+                {multiselectMode && listaFiltrada.length > 0 && (
+                  <div
+                    className="lista-item lista-item-multiselect lista-select-all-row"
+                    onClick={() => !bulkProcessing && selecionarTudoLista()}
+                  >
+                    <button
+                      type="button"
+                      className="lista-check-hit"
+                      aria-pressed={todasListaSelecionadas}
+                      aria-label={
+                        todasListaSelecionadas ? "Desmarcar todos" : "Selecionar todos"
+                      }
+                      disabled={bulkProcessing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selecionarTudoLista();
+                      }}
+                    >
+                      <span
+                        className={`lista-check-box${todasListaSelecionadas ? " is-checked" : ""}${algumasListaSelecionadas ? " is-indeterminate" : ""}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <span className="lista-select-all-label">
+                      Selecionar todos ({listaFiltrada.length})
+                    </span>
+                  </div>
+                )}
                 {loadingCrm && rows.length === 0 ? (
                   <ListaSkeleton />
                 ) : error && rows.length === 0 ? (
@@ -2846,6 +2860,44 @@ export default function WhatsappCrmClient({
                 }
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === "confirmar_abordagem_lote" && (
+        <div className="modal-overlay" onClick={() => !bulkProcessing && setModal(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>Enviar abordagem?</h3>
+            <p className="modal-hint">
+              Vai disparar a mensagem inicial de abordagem (template WhatsApp com nome + vaga) para{" "}
+              <strong>{checkedIds.length}</strong> candidato(s) selecionado(s).
+            </p>
+            <p className="modal-hint modal-hint-warn">
+              Confira a seleção antes de confirmar — o envio não pode ser desfeito pelo CRM.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={bulkProcessing}
+                onClick={() => setModal(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={bulkProcessing || checkedIds.length === 0}
+                onClick={() => {
+                  setModal(null);
+                  void runBulkAction("template_lote", {
+                    template: "abordagem_candidatura_gege",
+                  });
+                }}
+              >
+                {bulkProcessing ? "Enviando…" : `Confirmar (${checkedIds.length})`}
               </button>
             </div>
           </div>
