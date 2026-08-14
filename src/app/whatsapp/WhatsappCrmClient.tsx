@@ -1703,7 +1703,6 @@ export default function WhatsappCrmClient({
                     onClick={() => {
                       setMultiselectMode(true);
                       setCheckedIds([]);
-                      prevCheckedCountRef.current = 0;
                       setListaMenuOpen(false);
                     }}
                   >

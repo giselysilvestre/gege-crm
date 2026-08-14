@@ -197,7 +197,9 @@ async function loadVagaTitulo(
 async function loadSessao(supabase: ReturnType<typeof getSupabaseAdmin>, sessaoId: string) {
   const { data, error } = await supabase
     .from("whatsapp_sessoes")
-    .select("id,candidato_id,candidatura_id,etapa_funil,reativacao_enviada,ultima_inbound_at")
+    .select(
+      "id,candidato_id,candidatura_id,etapa_funil,etapa_atual,status,reativacao_enviada,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at"
+    )
     .eq("id", sessaoId)
     .maybeSingle();
   if (error) throw error;

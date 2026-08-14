@@ -682,6 +682,28 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.crm-sidebar-logo-svg {
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.crm-sidebar svg {
+  max-width: 24px;
+  max-height: 24px;
+  flex-shrink: 0;
+}
+
+.crm-topbar svg {
+  max-width: 24px;
+  max-height: 24px;
+  flex-shrink: 0;
 }
 
 .crm-sidebar-title {
@@ -817,11 +839,6 @@ body {
   height: 18px;
   flex-shrink: 0;
   opacity: 0.85;
-}
-
-.crm-sidebar-logo-svg {
-  width: 16px;
-  height: 16px;
 }
 
 .crm-nav-label {
@@ -2749,6 +2766,8 @@ body {
 .lista-check-box {
   width: 16px;
   height: 16px;
+  max-width: 16px;
+  max-height: 16px;
   flex-shrink: 0;
   border: 1.5px solid #cbd5e1;
   border-radius: 4px;
@@ -2757,6 +2776,8 @@ body {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .lista-check-box.is-checked {

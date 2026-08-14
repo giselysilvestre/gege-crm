@@ -9,12 +9,12 @@ import {
 import type { EtapaFunil } from "./types";
 
 type SessaoLike = {
-  etapa_funil: string | null;
-  etapa_atual: string | null;
-  status: string | null;
-  ultima_inbound_at: string | null;
-  ultima_outbound_at: string | null;
-  primeira_resposta_at: string | null;
+  etapa_funil?: string | null;
+  etapa_atual?: string | null;
+  status?: string | null;
+  ultima_inbound_at?: string | null;
+  ultima_outbound_at?: string | null;
+  primeira_resposta_at?: string | null;
 };
 
 /** Sessão com pelo menos uma msg registrada (in/out). Sessão vazia = inscrito. */
@@ -47,8 +47,8 @@ export function inferirEtapaFunil(
   if (fromCand) return fromCand;
 
   const fromSessao = etapaFromStatus(sessao.etapa_funil);
-  if (fromSessao && (fromSessao === "inscrito" || temMsg)) return fromSessao;
-  if (fromSessao && fromSessao !== "inscrito" && !temMsg) {
+  if (fromSessao) {
+    if (fromSessao === "inscrito" || temMsg) return fromSessao;
     return "inscrito";
   }
 

@@ -54,9 +54,28 @@ function IconBell({ className }: IconProps) {
 
 function IconSparkles({ className }: IconProps) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 3l1.2 4.2L17.5 8.5 13.2 9.7 12 14l-1.2-4.3L6.5 8.5l4.3-1.3L12 3Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
-      <path d="M18 14l.8 2.8L21.5 18l-2.7.8L18 21.5l-.8-2.7L14.5 18l2.7-.8L18 14Z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3l1.2 4.2L17.5 8.5 13.2 9.7 12 14l-1.2-4.3L6.5 8.5l4.3-1.3L12 3Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M18 14l.8 2.8L21.5 18l-2.7.8L18 21.5l-.8-2.7L14.5 18l2.7-.8L18 14Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+        fill="none"
+      />
     </svg>
   );
 }
