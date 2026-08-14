@@ -38,8 +38,8 @@ import {
 } from "@/lib/crm/listaConversasUi";
 import {
   matchFiltroData,
-  matchFiltroReprovados,
-  type FiltroReprovados,
+  matchFiltroEtapaLista,
+  type FiltroEtapaLista,
 } from "@/lib/crm/listaConversasFilters";
 import {
   avatarClass,
@@ -380,10 +380,9 @@ export default function WhatsappCrmClient({
     else if (!sessaoId) pinnedRowRef.current = null;
     setSelected(sessaoId);
   }, []);
-  const [filtroEtapa, setFiltroEtapa] = useState<EtapaFunil | "">("");
+  const [filtroEtapa, setFiltroEtapa] = useState<FiltroEtapaLista>("");
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
   const [filtroContatoHumano, setFiltroContatoHumano] = useState("");
-  const [filtroReprovados, setFiltroReprovados] = useState<FiltroReprovados>("ativos");
   const [filtroDataDe, setFiltroDataDe] = useState("");
   const [filtroDataAte, setFiltroDataAte] = useState("");
   const [buscaNome, setBuscaNome] = useState("");
@@ -891,7 +890,6 @@ export default function WhatsappCrmClient({
 
   const rowsFiltrados = useMemo(() => {
     let list = rows;
-    list = list.filter((r) => matchFiltroReprovados(r, filtroReprovados));
     if (filtroDataDe || filtroDataAte) {
       list = list.filter((r) => matchFiltroData(r, filtroDataDe, filtroDataAte));
     }
@@ -913,10 +911,14 @@ export default function WhatsappCrmClient({
     buscaNome,
     filtroFavoritos,
     filtroContatoHumano,
-    filtroReprovados,
     filtroDataDe,
     filtroDataAte,
   ]);
+
+  const listaFiltrada = useMemo(() => {
+    const list = rowsFiltrados.filter((r) => matchFiltroEtapaLista(r, filtroEtapa));
+    return sortCandidatos(list, sortBy);
+  }, [rowsFiltrados, filtroEtapa, sortBy]);
 
   const contatosHumanoOpcoes = useMemo(() => {
     const set = new Set<string>();
@@ -925,13 +927,6 @@ export default function WhatsappCrmClient({
     }
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [rows]);
-
-  const listaFiltrada = useMemo(() => {
-    const list = filtroEtapa
-      ? rowsFiltrados.filter((r) => r.etapa_funil === filtroEtapa)
-      : rowsFiltrados;
-    return sortCandidatos(list, sortBy);
-  }, [rowsFiltrados, filtroEtapa, sortBy]);
 
   const clientes = useMemo(() => {
     const map = new Map<string, string>();
@@ -962,7 +957,7 @@ export default function WhatsappCrmClient({
     const map = new Map<EtapaFunil, CrmCandidatoRow[]>();
     for (const e of [...FUNIL_PRINCIPAL, ...FUNIL_SAIDAS]) map.set(e, []);
     for (const r of rowsFiltrados) {
-      if (filtroEtapa && r.etapa_funil !== filtroEtapa) continue;
+      if (!matchFiltroEtapaLista(r, filtroEtapa)) continue;
       const list = map.get(r.etapa_funil) ?? [];
       list.push(r);
       map.set(r.etapa_funil, list);
@@ -1022,7 +1017,6 @@ export default function WhatsappCrmClient({
     (filtroEtapa ? 1 : 0) +
     (filtroFavoritos ? 1 : 0) +
     (filtroContatoHumano ? 1 : 0) +
-    (filtroReprovados !== "ativos" ? 1 : 0) +
     (filtroDataDe || filtroDataAte ? 1 : 0) +
     (sortBy !== "recente" ? 1 : 0);
 
@@ -1601,7 +1595,7 @@ export default function WhatsappCrmClient({
                 <select
                   className="crm-toolbar-select"
                   value={filtroEtapa}
-                  onChange={(e) => setFiltroEtapa(e.target.value as EtapaFunil | "")}
+                  onChange={(e) => setFiltroEtapa(e.target.value as FiltroEtapaLista)}
                 >
                   <option value="">Todas etapas</option>
                   {[...FUNIL_PRINCIPAL, ...FUNIL_SAIDAS].map((e) => (
@@ -1609,18 +1603,7 @@ export default function WhatsappCrmClient({
                       {ETAPA_LABELS[e]}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className="crm-filters-field">
-                <span>Reprovados</span>
-                <select
-                  className="crm-toolbar-select"
-                  value={filtroReprovados}
-                  onChange={(e) => setFiltroReprovados(e.target.value as FiltroReprovados)}
-                >
-                  <option value="ativos">Ocultar reprovados</option>
-                  <option value="so_reprovados">Só reprovados</option>
-                  <option value="todos">Todos</option>
+                  <option value={ETAPA_DESTINO_REPROVADO}>Reprovado</option>
                 </select>
               </label>
               <label className="crm-filters-field">
@@ -1847,7 +1830,12 @@ export default function WhatsappCrmClient({
         {view === "kanban" && !(loadingCrm && rows.length === 0) && (
           <div className="kanban-board">
             {[...FUNIL_PRINCIPAL, ...FUNIL_SAIDAS]
-              .filter((etapa) => !filtroEtapa || etapa === filtroEtapa)
+              .filter(
+                (etapa) =>
+                  !filtroEtapa ||
+                  filtroEtapa === ETAPA_DESTINO_REPROVADO ||
+                  etapa === filtroEtapa
+              )
               .map((etapa) => {
               const cards = byEtapa.get(etapa) ?? [];
               return (

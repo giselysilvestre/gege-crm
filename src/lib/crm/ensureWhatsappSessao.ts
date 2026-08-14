@@ -1,5 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+async function mapInBatches<T>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map(fn));
+  }
+}
+
 /**
  * Garante whatsapp_sessoes para candidatura ativa (sessão vazia, sem outbound).
  * Idempotente — safe chamar várias vezes.
@@ -81,10 +92,10 @@ export async function ensureWhatsappSessoesForCandidaturas(
   }
 
   let created = 0;
-  for (const c of candidaturas) {
-    if (withSessao.has(c.id) || !c.candidato_id) continue;
+  const missing = candidaturas.filter((c) => !withSessao.has(c.id) && c.candidato_id);
+  await mapInBatches(missing, 8, async (c) => {
     await ensureWhatsappSessaoForCandidatura(supabase, c.candidato_id, c.id);
     created += 1;
-  }
+  });
   return created;
 }

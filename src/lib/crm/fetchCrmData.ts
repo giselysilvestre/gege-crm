@@ -201,25 +201,28 @@ async function fetchUltimaMensagemPorSessao(
 const SESSAO_SELECT =
   "id,candidato_id,candidatura_id,etapa_atual,etapa_funil,status,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at,resumo_ia,reativacao_enviada,favorito_crm,crm_visualizado_em,criado_em,atualizado_em";
 
-async function fetchAllSessoes(supabase: SupabaseClient): Promise<SessaoRow[]> {
-  return fetchPaginated(async (from, pageSize) => {
-    const { data, error } = await supabase
-      .from("whatsapp_sessoes")
-      .select(SESSAO_SELECT)
-      .order("atualizado_em", { ascending: false, nullsFirst: false })
-      .order("criado_em", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, from + pageSize - 1);
-    if (error) throw error;
-    return (data ?? []) as SessaoRow[];
-  });
-}
+/** Lista CRM: sem resumo_ia (texto longo — carrega só ao abrir conversa). */
+const SESSAO_LIST_SELECT =
+  "id,candidato_id,candidatura_id,etapa_atual,etapa_funil,status,ultima_inbound_at,ultima_outbound_at,primeira_resposta_at,reativacao_enviada,favorito_crm,crm_visualizado_em,criado_em,atualizado_em";
 
 async function fetchSessoesInChunk(
   supabase: SupabaseClient,
-  candidaturaIds: string[]
+  candidaturaIds: string[],
+  lite = true
 ): Promise<SessaoRow[]> {
   return fetchPaginated(async (from, pageSize) => {
+    if (lite) {
+      const { data, error } = await supabase
+        .from("whatsapp_sessoes")
+        .select(SESSAO_LIST_SELECT)
+        .in("candidatura_id", candidaturaIds)
+        .order("atualizado_em", { ascending: false, nullsFirst: false })
+        .order("criado_em", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      return (data ?? []) as SessaoRow[];
+    }
     const { data, error } = await supabase
       .from("whatsapp_sessoes")
       .select(SESSAO_SELECT)
@@ -259,9 +262,43 @@ async function fetchActiveCandidaturasByVaga(
   });
 }
 
+async function fetchActiveCandidaturasByVagaIds(
+  supabase: SupabaseClient,
+  vagaIds: string[]
+): Promise<CandidaturaRef[]> {
+  const uniqueVagaIds = [...new Set(vagaIds)];
+  if (uniqueVagaIds.length === 0) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueVagaIds.length; i += IN_CHUNK) {
+    chunks.push(uniqueVagaIds.slice(i, i + IN_CHUNK));
+  }
+
+  const parts = await mapInBatches(chunks, IN_PARALLEL, async (slice) => {
+    return fetchPaginated(async (from, pageSize) => {
+      const { data, error } = await supabase
+        .from("candidaturas")
+        .select("id,candidato_id")
+        .in("vaga_id", slice)
+        .or("arquivada.is.null,arquivada.eq.false")
+        .order("id", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      return (data ?? [])
+        .filter((r) => r.candidato_id)
+        .map((r) => ({ id: r.id as string, candidato_id: r.candidato_id as string }));
+    });
+  });
+
+  const byId = new Map<string, CandidaturaRef>();
+  for (const row of parts.flat()) byId.set(row.id, row);
+  return [...byId.values()];
+}
+
 async function fetchSessoesForCandidaturaIds(
   supabase: SupabaseClient,
-  candidaturaIds: string[]
+  candidaturaIds: string[],
+  lite = true
 ): Promise<SessaoRow[]> {
   if (candidaturaIds.length === 0) return [];
 
@@ -271,7 +308,7 @@ async function fetchSessoesForCandidaturaIds(
   }
 
   const parts = await Promise.all(
-    chunks.map(async (slice) => fetchSessoesInChunk(supabase, slice))
+    chunks.map(async (slice) => fetchSessoesInChunk(supabase, slice, lite))
   );
 
   const byId = new Map<string, SessaoRow>();
@@ -367,8 +404,13 @@ export async function fetchCrmRows(
   opts?: { skipPreview?: boolean; lite?: boolean }
 ): Promise<CrmCandidatoRow[]> {
   const skipPreview = opts?.skipPreview !== false;
-  /** lite: pula experiências CV em lote (carrega só ao abrir 1 conversa). */
+  /** lite: pula experiências CV e resumo_ia em lote (carrega só ao abrir 1 conversa). */
   const lite = opts?.lite !== false;
+
+  if (!vagaId && !clienteId) {
+    return [];
+  }
+
   let sessoes: SessaoRow[];
   let candidaturaIds: string[];
 
@@ -376,23 +418,15 @@ export async function fetchCrmRows(
     const candidaturas = await fetchActiveCandidaturasByVaga(supabase, vagaId);
     candidaturaIds = candidaturas.map((c) => c.id);
     await ensureWhatsappSessoesForCandidaturas(supabase, candidaturas);
-    sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds);
+    sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds, lite);
   } else if (clienteId) {
     const vagaIds = await fetchVagaIdsByCliente(supabase, clienteId);
-    const candidaturas: CandidaturaRef[] = [];
-    for (const vid of vagaIds) {
-      candidaturas.push(...(await fetchActiveCandidaturasByVaga(supabase, vid)));
-    }
-    const byId = new Map(candidaturas.map((c) => [c.id, c]));
-    const unique = [...byId.values()];
-    candidaturaIds = unique.map((c) => c.id);
-    await ensureWhatsappSessoesForCandidaturas(supabase, unique);
-    sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds);
+    const candidaturas = await fetchActiveCandidaturasByVagaIds(supabase, vagaIds);
+    candidaturaIds = candidaturas.map((c) => c.id);
+    await ensureWhatsappSessoesForCandidaturas(supabase, candidaturas);
+    sessoes = await fetchSessoesForCandidaturaIds(supabase, candidaturaIds, lite);
   } else {
-    sessoes = await fetchAllSessoes(supabase);
-    candidaturaIds = Array.from(
-      new Set(sessoes.map((s) => s.candidatura_id).filter(Boolean))
-    ) as string[];
+    return [];
   }
 
   sessoes.sort((a, b) => {
@@ -419,12 +453,16 @@ export async function fetchCrmRows(
     ? "candidato_id,score_ia,score_pos_entrevista,tags,disponibilidade_horario"
     : "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo";
 
+  const candidatoSelect = lite
+    ? "id,nome,telefone,cidade,bairro,regiao"
+    : "id,nome,telefone,situacao_emprego,cidade,bairro,regiao,data_nascimento,curriculo_url";
+
   const [candidatos, analises, experienciasRaw, vagasRows] = await Promise.all([
     candidatoIds.length
       ? fetchRowsByIds<Record<string, unknown>>(
           supabase,
           "candidatos",
-          "id,nome,telefone,situacao_emprego,cidade,bairro,regiao,data_nascimento,curriculo_url",
+          candidatoSelect,
           "id",
           candidatoIds
         )
@@ -565,7 +603,7 @@ export async function fetchCrmRows(
       ultima_outbound_at: s.ultima_outbound_at,
       precisa_resposta: precisa,
       status_dot: dentroJanela24h(s.ultima_inbound_at) ? "green" : "gray",
-      resumo_ia: s.resumo_ia,
+      resumo_ia: lite ? null : s.resumo_ia,
       perfil_resumo: lite ? null : ((analise?.perfil_resumo as string | null) ?? null),
       analise_completa: null,
       experiencias_cv:
