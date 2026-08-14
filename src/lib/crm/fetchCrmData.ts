@@ -454,7 +454,7 @@ export async function fetchCrmRows(
     : "candidato_id,score_ia,score_final,score_pos_entrevista,tags,disponibilidade_horario,perfil_resumo";
 
   const candidatoSelect = lite
-    ? "id,nome,telefone,cidade,bairro,regiao"
+    ? "id,nome,telefone,cidade,bairro,regiao,curriculo_url"
     : "id,nome,telefone,situacao_emprego,cidade,bairro,regiao,data_nascimento,curriculo_url";
 
   const [candidatos, analises, experienciasRaw, vagasRows] = await Promise.all([
@@ -642,7 +642,7 @@ export async function fetchCandidatoExtras(
   if (!sessao?.candidato_id) return null;
 
   const candidatoId = sessao.candidato_id as string;
-  const [analiseRes, expsRes] = await Promise.all([
+  const [analiseRes, expsRes, candRes] = await Promise.all([
     supabase
       .from("candidatos_analise")
       .select("analise_completa,perfil_resumo")
@@ -652,9 +652,11 @@ export async function fetchCandidatoExtras(
       .from("candidatos_experiencia")
       .select("empresa,cargo,data_inicio,data_fim,meses")
       .eq("candidato_id", candidatoId),
+    supabase.from("candidatos").select("curriculo_url").eq("id", candidatoId).maybeSingle(),
   ]);
   if (analiseRes.error) throw analiseRes.error;
   if (expsRes.error) throw expsRes.error;
+  if (candRes.error) throw candRes.error;
 
   const experiencias: CandidatoExperiencia[] = [];
   for (const row of expsRes.data ?? []) {
@@ -673,6 +675,7 @@ export async function fetchCandidatoExtras(
     analise_completa: (analiseRes.data?.analise_completa as string | null) ?? null,
     perfil_resumo: (analiseRes.data?.perfil_resumo as string | null) ?? null,
     experiencias_cv: topExperiencias(experiencias),
+    curriculo_url: (candRes.data?.curriculo_url as string | null) ?? null,
   };
 }
 

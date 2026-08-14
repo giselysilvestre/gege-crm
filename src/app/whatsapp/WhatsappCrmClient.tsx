@@ -816,12 +816,16 @@ export default function WhatsappCrmClient({
           analise_completa?: string | null;
           perfil_resumo?: string | null;
           experiencias_cv?: CrmCandidatoRow["experiencias_cv"];
+          curriculo_url?: string | null;
         }>(r)
       )
       .then((json) => {
         if (
           cancelled ||
-          (!json.analise_completa && !json.perfil_resumo && !(json.experiencias_cv?.length ?? 0))
+          (!json.analise_completa &&
+            !json.perfil_resumo &&
+            !(json.experiencias_cv?.length ?? 0) &&
+            !json.curriculo_url)
         ) {
           return;
         }
@@ -833,6 +837,7 @@ export default function WhatsappCrmClient({
                   analise_completa: json.analise_completa ?? r.analise_completa,
                   perfil_resumo: json.perfil_resumo ?? r.perfil_resumo,
                   experiencias_cv: json.experiencias_cv ?? r.experiencias_cv,
+                  curriculo_url: json.curriculo_url ?? r.curriculo_url,
                 }
               : r
           )
@@ -843,6 +848,7 @@ export default function WhatsappCrmClient({
             analise_completa: json.analise_completa ?? pinnedRowRef.current.analise_completa,
             perfil_resumo: json.perfil_resumo ?? pinnedRowRef.current.perfil_resumo,
             experiencias_cv: json.experiencias_cv ?? pinnedRowRef.current.experiencias_cv,
+            curriculo_url: json.curriculo_url ?? pinnedRowRef.current.curriculo_url,
           };
         }
       })
@@ -2333,8 +2339,9 @@ export default function WhatsappCrmClient({
                           target="_blank"
                           rel="noopener noreferrer"
                           className="ctx-drive-link"
+                          title="Abrir currículo em nova aba"
                         >
-                          CV Drive
+                          Ver CV
                         </a>
                       )}
                       <div className="cand-actions-menu-wrap" ref={acoesMenuRef}>
