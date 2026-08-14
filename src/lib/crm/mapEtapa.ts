@@ -2,6 +2,7 @@ import {
   CANDIDATURA_ETAPAS,
   CANDIDATURA_STATUS_INICIAL,
   etapaFromStatus,
+  isCandidaturaMorta,
   normalizeCandidaturaStatus,
   type CandidaturaEtapa,
   type CandidaturaStatus,
@@ -72,7 +73,7 @@ export function statusDetalhadoFromCandidatura(
   return normalizeCandidaturaStatus(candidatura?.status ?? null);
 }
 
-/** Status exibido no CRM: sem msg na sessão, etapas além de inscrito voltam ao inicial. */
+/** Status exibido no CRM: sem msg na sessão, reprovação no banco não vale — ainda inscrito. */
 export function statusDetalhadoExibicao(
   sessao: SessaoLike,
   candidatura: CandidaturaLike | null
@@ -80,6 +81,9 @@ export function statusDetalhadoExibicao(
   const raw = statusDetalhadoFromCandidatura(candidatura);
   if (!raw) return null;
   if (!sessaoTemHistoricoMensagem(sessao)) {
+    if (isCandidaturaMorta(raw)) {
+      return CANDIDATURA_STATUS_INICIAL;
+    }
     const etapa = etapaFromStatus(raw);
     if (etapa && etapa !== "inscrito") {
       return CANDIDATURA_STATUS_INICIAL;
